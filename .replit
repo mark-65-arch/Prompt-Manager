@@ -43,4 +43,4 @@ externalPort = 3000
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["python", "-m", "http.server", "5000"]
+run = ["python", "-m", "http.server"]
