@@ -1,0 +1,82 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+    <meta charset="UTF-8">
+    <meta name="viewport" content="width=device-width, initial-scale=1.0">
+    <title>AI Prompt Manager</title>
+    <link rel="stylesheet" href="styles.css">
+</head>
+<body>
+    <div class="app-container">
+        <!-- Header -->
+        <header class="header">
+            <button class="hamburger" id="hamburger" aria-label="Toggle menu">
+                <span></span>
+                <span></span>
+                <span></span>
+            </button>
+            <h1 class="app-title">AI Prompt Manager</h1>
+        </header>
+
+        <!-- Sidebar -->
+        <aside class="sidebar" id="sidebar">
+            <nav class="sidebar-nav">
+                <h2 class="sidebar-title">Categories</h2>
+                <ul class="category-list">
+                    <li class="category-item">
+                        <button class="category-button active">All Prompts</button>
+                    </li>
+                    <li class="category-item">
+                        <button class="category-button">Writing</button>
+                    </li>
+                    <li class="category-item">
+                        <button class="category-button">Coding</button>
+                    </li>
+                    <li class="category-item">
+                        <button class="category-button">Business</button>
+                    </li>
+                    <li class="category-item">
+                        <button class="category-button">Creative</button>
+                    </li>
+                    <li class="category-item">
+                        <button class="category-button">Analysis</button>
+                    </li>
+                </ul>
+                <button class="add-category-btn">+ Add Category</button>
+            </nav>
+        </aside>
+
+        <!-- Main Content Area -->
+        <main class="main-content">
+            <div class="content-header">
+                <h2 class="content-title">All Prompts</h2>
+                <button class="add-prompt-btn">+ Add New Prompt</button>
+            </div>
+            
+            <div class="search-bar">
+                <input type="text" placeholder="Search prompts..." class="search-input">
+                <button class="search-btn">Search</button>
+            </div>
+
+            <div class="prompts-grid">
+                <div class="prompt-card">
+                    <div class="prompt-header">
+                        <h3 class="prompt-title">Welcome to AI Prompt Manager</h3>
+                        <span class="prompt-category">General</span>
+                    </div>
+                    <p class="prompt-description">This is your prompt management dashboard. Use the sidebar to organize your prompts by categories, and click "Add New Prompt" to get started.</p>
+                    <div class="prompt-actions">
+                        <button class="btn-secondary">Edit</button>
+                        <button class="btn-primary">Use Prompt</button>
+                    </div>
+                </div>
+            </div>
+        </main>
+
+        <!-- Mobile Overlay -->
+        <div class="mobile-overlay" id="mobileOverlay"></div>
+    </div>
+
+    <script src="script.js"></script>
+</body>
+</html>
