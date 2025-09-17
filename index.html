@@ -21,28 +21,17 @@
         <!-- Sidebar -->
         <aside class="sidebar" id="sidebar">
             <nav class="sidebar-nav">
-                <h2 class="sidebar-title">Categories</h2>
-                <ul class="category-list">
-                    <li class="category-item">
-                        <button class="category-button active">All Prompts</button>
-                    </li>
-                    <li class="category-item">
-                        <button class="category-button">Writing</button>
-                    </li>
-                    <li class="category-item">
-                        <button class="category-button">Coding</button>
-                    </li>
-                    <li class="category-item">
-                        <button class="category-button">Business</button>
-                    </li>
-                    <li class="category-item">
-                        <button class="category-button">Creative</button>
-                    </li>
-                    <li class="category-item">
-                        <button class="category-button">Analysis</button>
-                    </li>
-                </ul>
-                <button class="add-category-btn">+ Add Category</button>
+                <div class="sidebar-header">
+                    <h2 class="sidebar-title">Categories</h2>
+                    <div class="category-actions">
+                        <button class="add-category-btn" id="addCategoryBtn" title="Add Category">
+                            <span class="icon">+</span>
+                        </button>
+                    </div>
+                </div>
+                <div class="category-tree" id="categoryTree">
+                    <!-- Categories will be dynamically generated here -->
+                </div>
             </nav>
         </aside>
 
@@ -76,6 +65,54 @@
         <!-- Mobile Overlay -->
         <div class="mobile-overlay" id="mobileOverlay"></div>
     </div>
+
+    <!-- Category Management Modal -->
+    <div class="modal" id="categoryModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="modalTitle">Add Category</h3>
+                <button class="modal-close" id="modalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="categoryForm">
+                    <div class="form-group">
+                        <label for="categoryName">Category Name</label>
+                        <input type="text" id="categoryName" class="form-input" required>
+                    </div>
+                    <div class="form-group" id="parentCategoryGroup" style="display: none;">
+                        <label for="parentCategory">Parent Category</label>
+                        <select id="parentCategory" class="form-select">
+                            <option value="">Select parent category...</option>
+                        </select>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn-secondary" id="cancelBtn">Cancel</button>
+                        <button type="submit" class="btn-primary" id="submitBtn">Save</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
+    <!-- Confirmation Modal -->
+    <div class="modal" id="confirmModal">
+        <div class="modal-content small">
+            <div class="modal-header">
+                <h3 class="modal-title">Confirm Delete</h3>
+                <button class="modal-close" id="confirmModalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <p id="confirmMessage">Are you sure you want to delete this category?</p>
+                <div class="form-actions">
+                    <button type="button" class="btn-secondary" id="confirmCancelBtn">Cancel</button>
+                    <button type="button" class="btn-danger" id="confirmDeleteBtn">Delete</button>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Modal Overlay -->
+    <div class="modal-overlay" id="modalOverlay"></div>
 
     <script src="script.js"></script>
 </body>
