@@ -1027,36 +1027,121 @@ function getSamplePrompts(category) {
 function createPromptCard(prompt) {
     const card = document.createElement('div');
     card.className = 'prompt-card';
+    card.dataset.promptId = prompt.id;
     
     // Format creation date
     const createdDate = new Date(prompt.createdAt).toLocaleDateString();
     
-    // Format tags
-    const tagsHtml = prompt.tags.length > 0 
-        ? `<div class="prompt-tags">${prompt.tags.map(tag => `<span class="tag">${tag}</span>`).join('')}</div>`
-        : '';
+    // Define tag colors for safe usage
+    const tagColors = ['blue', 'green', 'purple', 'orange', 'pink', 'teal', 'red', 'indigo'];
     
-    // Truncate content for card display
-    const truncatedContent = prompt.content.length > 150 
+    // Content truncation logic (safe)
+    const shouldTruncate = prompt.content.length > 150;
+    const truncatedContent = shouldTruncate 
         ? prompt.content.substring(0, 150) + '...'
         : prompt.content;
     
-    card.innerHTML = `
-        <div class="prompt-header">
-            <h3 class="prompt-title">${prompt.title}</h3>
-            <div class="prompt-meta">
-                <span class="prompt-model">${prompt.aiModel}</span>
-                <span class="prompt-date">${createdDate}</span>
-            </div>
-        </div>
-        <p class="prompt-description">${truncatedContent}</p>
-        ${tagsHtml}
-        <div class="prompt-actions">
-            <button class="btn-secondary" onclick="editPrompt('${prompt.id}')">Edit</button>
-            <button class="btn-danger btn-small" onclick="deletePrompt('${prompt.id}')" title="Delete Prompt">×</button>
-            <button class="btn-primary" onclick="usePrompt(${JSON.stringify(prompt).replace(/'/g, "&apos;")})">Use Prompt</button>
-        </div>
-    `;
+    // Create elements safely using DOM methods to prevent XSS
+    const header = document.createElement('div');
+    header.className = 'prompt-header';
+    
+    const title = document.createElement('h3');
+    title.className = 'prompt-title';
+    title.textContent = prompt.title; // Safe text insertion
+    
+    const meta = document.createElement('div');
+    meta.className = 'prompt-meta';
+    
+    const modelBadge = document.createElement('span');
+    modelBadge.className = `ai-model-badge ai-model-${prompt.aiModel.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+    modelBadge.textContent = prompt.aiModel; // Safe text insertion
+    
+    const dateSpan = document.createElement('span');
+    dateSpan.className = 'prompt-date';
+    dateSpan.textContent = createdDate;
+    
+    meta.appendChild(modelBadge);
+    meta.appendChild(dateSpan);
+    header.appendChild(title);
+    header.appendChild(meta);
+    
+    // Create content section safely
+    const contentDiv = document.createElement('div');
+    contentDiv.className = 'prompt-content';
+    
+    if (shouldTruncate) {
+        const truncatedP = document.createElement('p');
+        truncatedP.className = 'prompt-description truncated';
+        truncatedP.id = `content-${prompt.id}`;
+        truncatedP.textContent = truncatedContent; // Safe text insertion
+        
+        const fullP = document.createElement('p');
+        fullP.className = 'prompt-description full';
+        fullP.id = `full-content-${prompt.id}`;
+        fullP.style.display = 'none';
+        fullP.textContent = prompt.content; // Safe text insertion
+        
+        const readMoreBtn = document.createElement('button');
+        readMoreBtn.className = 'read-more-btn';
+        readMoreBtn.textContent = 'Read More';
+        readMoreBtn.onclick = () => toggleReadMore(prompt.id);
+        
+        contentDiv.appendChild(truncatedP);
+        contentDiv.appendChild(fullP);
+        contentDiv.appendChild(readMoreBtn);
+    } else {
+        const contentP = document.createElement('p');
+        contentP.className = 'prompt-description';
+        contentP.textContent = prompt.content; // Safe text insertion
+        contentDiv.appendChild(contentP);
+    }
+    
+    // Create tags section safely
+    const tagsDiv = document.createElement('div');
+    if (prompt.tags.length > 0) {
+        tagsDiv.className = 'prompt-tags';
+        prompt.tags.forEach((tag, index) => {
+            const tagSpan = document.createElement('span');
+            const colorClass = tagColors[index % tagColors.length];
+            tagSpan.className = `tag tag-${colorClass}`;
+            tagSpan.textContent = tag; // Safe text insertion
+            tagsDiv.appendChild(tagSpan);
+        });
+    }
+    
+    // Create actions section safely
+    const actionsDiv = document.createElement('div');
+    actionsDiv.className = 'prompt-actions';
+    
+    const editBtn = document.createElement('button');
+    editBtn.className = 'btn-secondary';
+    editBtn.title = 'Edit Prompt';
+    editBtn.onclick = () => editPrompt(prompt.id);
+    editBtn.innerHTML = '<span class="btn-icon">✎</span> Edit';
+    
+    const deleteBtn = document.createElement('button');
+    deleteBtn.className = 'btn-danger btn-small';
+    deleteBtn.title = 'Delete Prompt';
+    deleteBtn.onclick = () => confirmDeletePrompt(prompt.id);
+    deleteBtn.innerHTML = '<span class="btn-icon">×</span>';
+    
+    const copyBtn = document.createElement('button');
+    copyBtn.className = 'btn-primary';
+    copyBtn.title = 'Copy to Clipboard';
+    copyBtn.onclick = () => copyPrompt(prompt.id);
+    copyBtn.innerHTML = '<span class="btn-icon">📋</span> Copy';
+    
+    actionsDiv.appendChild(editBtn);
+    actionsDiv.appendChild(deleteBtn);
+    actionsDiv.appendChild(copyBtn);
+    
+    // Assemble the card
+    card.appendChild(header);
+    card.appendChild(contentDiv);
+    if (prompt.tags.length > 0) {
+        card.appendChild(tagsDiv);
+    }
+    card.appendChild(actionsDiv);
     
     return card;
 }
@@ -1627,12 +1712,136 @@ function copyToClipboardFallback(text, title) {
     document.body.removeChild(textArea);
 }
 
-function deletePrompt(promptId) {
-    const prompt = promptManager.getPrompt(promptId);
-    if (prompt && confirm(`Are you sure you want to delete the prompt "${prompt.title}"?`)) {
-        promptManager.deletePrompt(promptId);
-        refreshCurrentCategoryDisplay();
+// Toggle Read More/Less functionality
+function toggleReadMore(promptId) {
+    const truncatedContent = document.getElementById(`content-${promptId}`);
+    const fullContent = document.getElementById(`full-content-${promptId}`);
+    const readMoreBtn = document.querySelector(`[data-prompt-id="${promptId}"] .read-more-btn`);
+    
+    if (truncatedContent && fullContent && readMoreBtn) {
+        if (truncatedContent.style.display !== 'none') {
+            // Show full content
+            truncatedContent.style.display = 'none';
+            fullContent.style.display = 'block';
+            readMoreBtn.textContent = 'Read Less';
+        } else {
+            // Show truncated content
+            truncatedContent.style.display = 'block';
+            fullContent.style.display = 'none';
+            readMoreBtn.textContent = 'Read More';
+        }
     }
+}
+
+// Enhanced copy functionality
+function copyPrompt(promptId) {
+    const prompt = promptManager.getPrompt(promptId);
+    if (!prompt) return;
+    
+    // Copy prompt content to clipboard
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(prompt.content).then(() => {
+            showCopySuccess(promptId, prompt.title);
+        }).catch(() => {
+            // Fallback for older browsers
+            copyToClipboardFallback(prompt.content, prompt.title);
+        });
+    } else {
+        copyToClipboardFallback(prompt.content, prompt.title);
+    }
+}
+
+function showCopySuccess(promptId, title) {
+    const copyBtn = document.querySelector(`[data-prompt-id="${promptId}"] .btn-primary`);
+    if (copyBtn) {
+        const originalHtml = copyBtn.innerHTML;
+        copyBtn.innerHTML = '<span class="btn-icon">✓</span> Copied!';
+        copyBtn.classList.add('success');
+        
+        setTimeout(() => {
+            copyBtn.innerHTML = originalHtml;
+            copyBtn.classList.remove('success');
+        }, 2000);
+    }
+}
+
+// Enhanced delete confirmation
+function confirmDeletePrompt(promptId) {
+    const prompt = promptManager.getPrompt(promptId);
+    if (!prompt) return;
+    
+    showDeleteConfirmation(prompt);
+}
+
+function showDeleteConfirmation(prompt) {
+    const modal = document.getElementById('confirmModal');
+    const overlay = document.getElementById('modalOverlay');
+    const message = document.getElementById('confirmMessage');
+    const confirmBtn = document.getElementById('confirmDeleteBtn');
+    
+    if (!modal || !overlay || !message || !confirmBtn) return;
+    
+    // Create delete confirmation content safely
+    message.innerHTML = ''; // Clear existing content
+    
+    const strongText = document.createElement('strong');
+    strongText.textContent = 'Are you sure you want to delete this prompt?';
+    message.appendChild(strongText);
+    message.appendChild(document.createElement('br'));
+    message.appendChild(document.createElement('br'));
+    
+    const previewDiv = document.createElement('div');
+    previewDiv.className = 'delete-preview';
+    
+    const titleDiv = document.createElement('div');
+    titleDiv.className = 'delete-prompt-title';
+    titleDiv.textContent = `"${prompt.title}"`; // Safe text insertion
+    
+    const metaDiv = document.createElement('div');
+    metaDiv.className = 'delete-prompt-meta';
+    
+    const modelBadge = document.createElement('span');
+    modelBadge.className = `ai-model-badge ai-model-${prompt.aiModel.toLowerCase().replace(/[^a-z0-9]/g, '')}`;
+    modelBadge.textContent = prompt.aiModel; // Safe text insertion
+    
+    const dateSpan = document.createElement('span');
+    dateSpan.className = 'delete-prompt-date';
+    dateSpan.textContent = new Date(prompt.createdAt).toLocaleDateString();
+    
+    metaDiv.appendChild(modelBadge);
+    metaDiv.appendChild(dateSpan);
+    previewDiv.appendChild(titleDiv);
+    previewDiv.appendChild(metaDiv);
+    
+    message.appendChild(previewDiv);
+    message.appendChild(document.createElement('br'));
+    
+    const emText = document.createElement('em');
+    emText.textContent = 'This action cannot be undone.';
+    message.appendChild(emText);
+    
+    // Remove any existing click handlers and add new one
+    const newConfirmBtn = confirmBtn.cloneNode(true);
+    confirmBtn.parentNode.replaceChild(newConfirmBtn, confirmBtn);
+    
+    newConfirmBtn.addEventListener('click', () => {
+        executeDeletePrompt(prompt.id);
+        hideConfirmModal();
+    });
+    
+    modal.classList.add('show');
+    overlay.classList.add('show');
+    document.body.style.overflow = 'hidden';
+}
+
+function executeDeletePrompt(promptId) {
+    promptManager.deletePrompt(promptId);
+    refreshCurrentCategoryDisplay();
+}
+
+function deletePrompt(promptId) {
+    // Legacy function - redirect to new confirmation system
+    confirmDeletePrompt(promptId);
 }
 
 // Utility Functions
