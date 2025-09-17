@@ -189,12 +189,159 @@ class CategoryManager {
     }
 }
 
-// Global category manager instance
+// Prompt Management Data Structure
+class PromptManager {
+    constructor() {
+        this.prompts = this.loadPrompts();
+        this.initializeDefaultPrompts();
+    }
+
+    // Load prompts from localStorage
+    loadPrompts() {
+        const stored = localStorage.getItem('aiPrompts');
+        return stored ? JSON.parse(stored) : [];
+    }
+
+    // Save prompts to localStorage
+    savePrompts() {
+        localStorage.setItem('aiPrompts', JSON.stringify(this.prompts));
+    }
+
+    // Initialize default prompts if none exist
+    initializeDefaultPrompts() {
+        if (this.prompts.length === 0) {
+            this.prompts = [
+                {
+                    id: this.generateId(),
+                    title: 'Welcome to AI Prompt Manager',
+                    content: 'This is your prompt management dashboard. Use the sidebar to organize your prompts by categories, and click "Add New Prompt" to get started.',
+                    category: 'all',
+                    subcategory: null,
+                    aiModel: 'ChatGPT',
+                    tags: ['welcome', 'intro'],
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                },
+                {
+                    id: this.generateId(),
+                    title: 'Code Review Assistant',
+                    content: 'Please review the following code for best practices, potential bugs, and improvements. Focus on code quality, performance, and maintainability. Provide specific recommendations with examples.',
+                    category: 'coding',
+                    subcategory: 'debugging',
+                    aiModel: 'Claude',
+                    tags: ['code-review', 'debugging', 'best-practices'],
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                },
+                {
+                    id: this.generateId(),
+                    title: 'Creative Writing Starter',
+                    content: 'Generate 5 creative story ideas for [GENRE] fiction. Each idea should include a compelling protagonist, conflict, and unique setting. Focus on originality and emotional depth.',
+                    category: 'writing',
+                    subcategory: 'blog-posts',
+                    aiModel: 'ChatGPT',
+                    tags: ['creative-writing', 'story-ideas', 'fiction'],
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                }
+            ];
+            this.savePrompts();
+        }
+    }
+
+    // Create new prompt
+    createPrompt(promptData) {
+        const prompt = {
+            id: this.generateId(),
+            title: promptData.title,
+            content: promptData.content,
+            category: promptData.category,
+            subcategory: promptData.subcategory || null,
+            aiModel: promptData.aiModel,
+            tags: promptData.tags || [],
+            createdAt: new Date().toISOString(),
+            updatedAt: new Date().toISOString()
+        };
+
+        this.prompts.push(prompt);
+        this.savePrompts();
+        return prompt;
+    }
+
+    // Update prompt
+    updatePrompt(id, promptData) {
+        const index = this.prompts.findIndex(p => p.id === id);
+        if (index !== -1) {
+            this.prompts[index] = {
+                ...this.prompts[index],
+                ...promptData,
+                updatedAt: new Date().toISOString()
+            };
+            this.savePrompts();
+            return this.prompts[index];
+        }
+        return null;
+    }
+
+    // Delete prompt
+    deletePrompt(id) {
+        const index = this.prompts.findIndex(p => p.id === id);
+        if (index !== -1) {
+            this.prompts.splice(index, 1);
+            this.savePrompts();
+            return true;
+        }
+        return false;
+    }
+
+    // Get prompts by category
+    getPromptsByCategory(categoryId, subcategoryId = null) {
+        if (categoryId === 'all') {
+            return this.prompts;
+        }
+        
+        return this.prompts.filter(prompt => {
+            if (subcategoryId) {
+                return prompt.category === categoryId && prompt.subcategory === subcategoryId;
+            }
+            return prompt.category === categoryId;
+        });
+    }
+
+    // Get prompt by ID
+    getPrompt(id) {
+        return this.prompts.find(p => p.id === id) || null;
+    }
+
+    // Search prompts
+    searchPrompts(query) {
+        const lowerQuery = query.toLowerCase();
+        return this.prompts.filter(prompt => 
+            prompt.title.toLowerCase().includes(lowerQuery) ||
+            prompt.content.toLowerCase().includes(lowerQuery) ||
+            prompt.tags.some(tag => tag.toLowerCase().includes(lowerQuery))
+        );
+    }
+
+    // Generate unique ID
+    generateId() {
+        return 'prompt_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    }
+
+    // Get all prompts
+    getAllPrompts() {
+        return this.prompts;
+    }
+}
+
+// Global manager instances
 let categoryManager;
+let promptManager;
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize category manager
+    // Initialize managers
     categoryManager = new CategoryManager();
+    promptManager = new PromptManager();
     
     // Initialize the application
     initializeApp();
@@ -215,6 +362,9 @@ function initializeApp() {
     
     // Button event listeners
     initializeButtons();
+    
+    // Prompt modal event listeners
+    initializePromptModal();
 }
 
 // Mobile Menu Functionality
@@ -500,21 +650,117 @@ function initializeCategoryNavigation() {
     // This function can be used for additional navigation setup if needed
 }
 
-function updatePromptsDisplay(category) {
+function updatePromptsDisplay(categoryName) {
     const promptsGrid = document.querySelector('.prompts-grid');
     if (!promptsGrid) return;
     
     // Clear current prompts
     promptsGrid.innerHTML = '';
     
-    // Sample prompt data based on category
-    const prompts = getSamplePrompts(category);
+    // Get real prompts based on category
+    let prompts = [];
+    const activeCategory = document.querySelector('.category-main.active');
+    const activeSubcategory = document.querySelector('.subcategory-item.active');
+    
+    if (activeSubcategory) {
+        // Get prompts for subcategory
+        const subcategoryId = activeSubcategory.dataset.subcategoryId;
+        const parentId = activeSubcategory.dataset.parentId;
+        prompts = promptManager.getPromptsByCategory(parentId, subcategoryId);
+    } else if (activeCategory) {
+        // Get prompts for main category
+        const categoryId = activeCategory.dataset.categoryId;
+        prompts = promptManager.getPromptsByCategory(categoryId);
+    }
     
     // Create and append prompt cards
-    prompts.forEach(prompt => {
-        const promptCard = createPromptCard(prompt);
-        promptsGrid.appendChild(promptCard);
+    if (prompts.length === 0) {
+        // Show empty state
+        const emptyState = document.createElement('div');
+        emptyState.className = 'empty-state';
+        emptyState.innerHTML = `
+            <div class="empty-state-content">
+                <h3>No prompts in this category</h3>
+                <p>Add your first prompt to get started!</p>
+                <button class="btn-primary" onclick="addNewPrompt()">Add New Prompt</button>
+            </div>
+        `;
+        promptsGrid.appendChild(emptyState);
+    } else {
+        prompts.forEach(prompt => {
+            const promptCard = createPromptCard(prompt);
+            promptsGrid.appendChild(promptCard);
+        });
+    }
+}
+
+// Update search functionality to use real data
+function initializeSearch() {
+    const searchInput = document.querySelector('.search-input');
+    const searchBtn = document.querySelector('.search-btn');
+    
+    if (!searchInput || !searchBtn) return;
+    
+    const performSearch = () => {
+        const query = searchInput.value.trim();
+        if (query.length === 0) {
+            // Show current category prompts when search is cleared
+            refreshCurrentCategoryDisplay();
+            return;
+        }
+        
+        const results = promptManager.searchPrompts(query);
+        displaySearchResults(results, query);
+    };
+    
+    // Search on button click
+    searchBtn.addEventListener('click', performSearch);
+    
+    // Search on Enter key
+    searchInput.addEventListener('keypress', (e) => {
+        if (e.key === 'Enter') {
+            performSearch();
+        }
     });
+    
+    // Clear search when input is empty
+    searchInput.addEventListener('input', (e) => {
+        if (e.target.value.trim() === '') {
+            refreshCurrentCategoryDisplay();
+        }
+    });
+}
+
+function displaySearchResults(results, query) {
+    const promptsGrid = document.querySelector('.prompts-grid');
+    const contentTitle = document.querySelector('.content-title');
+    
+    if (!promptsGrid || !contentTitle) return;
+    
+    // Update title to show search results
+    contentTitle.textContent = `Search Results for "${query}"`;
+    
+    // Clear current prompts
+    promptsGrid.innerHTML = '';
+    
+    if (results.length === 0) {
+        // Show no results state
+        const noResults = document.createElement('div');
+        noResults.className = 'empty-state';
+        noResults.innerHTML = `
+            <div class="empty-state-content">
+                <h3>No prompts found</h3>
+                <p>Try different keywords or create a new prompt.</p>
+                <button class="btn-primary" onclick="addNewPrompt()">Add New Prompt</button>
+            </div>
+        `;
+        promptsGrid.appendChild(noResults);
+    } else {
+        results.forEach(prompt => {
+            const promptCard = createPromptCard(prompt);
+            promptsGrid.appendChild(promptCard);
+        });
+    }
 }
 
 function getSamplePrompts(category) {
@@ -782,53 +1028,40 @@ function createPromptCard(prompt) {
     const card = document.createElement('div');
     card.className = 'prompt-card';
     
+    // Format creation date
+    const createdDate = new Date(prompt.createdAt).toLocaleDateString();
+    
+    // Format tags
+    const tagsHtml = prompt.tags.length > 0 
+        ? `<div class="prompt-tags">${prompt.tags.map(tag => `<span class="tag">${tag}</span>`).join('')}</div>`
+        : '';
+    
+    // Truncate content for card display
+    const truncatedContent = prompt.content.length > 150 
+        ? prompt.content.substring(0, 150) + '...'
+        : prompt.content;
+    
     card.innerHTML = `
         <div class="prompt-header">
             <h3 class="prompt-title">${prompt.title}</h3>
-            <span class="prompt-category">${prompt.category}</span>
+            <div class="prompt-meta">
+                <span class="prompt-model">${prompt.aiModel}</span>
+                <span class="prompt-date">${createdDate}</span>
+            </div>
         </div>
-        <p class="prompt-description">${prompt.description}</p>
+        <p class="prompt-description">${truncatedContent}</p>
+        ${tagsHtml}
         <div class="prompt-actions">
-            <button class="btn-secondary" onclick="editPrompt('${prompt.title}')">Edit</button>
-            <button class="btn-primary" onclick="usePrompt('${prompt.title}')">Use Prompt</button>
+            <button class="btn-secondary" onclick="editPrompt('${prompt.id}')">Edit</button>
+            <button class="btn-danger btn-small" onclick="deletePrompt('${prompt.id}')" title="Delete Prompt">×</button>
+            <button class="btn-primary" onclick="usePrompt(${JSON.stringify(prompt).replace(/'/g, "&apos;")})">Use Prompt</button>
         </div>
     `;
     
     return card;
 }
 
-// Search Functionality
-function initializeSearch() {
-    const searchInput = document.querySelector('.search-input');
-    const searchBtn = document.querySelector('.search-btn');
-    
-    if (searchInput && searchBtn) {
-        searchInput.addEventListener('input', handleSearch);
-        searchBtn.addEventListener('click', handleSearch);
-        searchInput.addEventListener('keypress', function(e) {
-            if (e.key === 'Enter') {
-                handleSearch();
-            }
-        });
-    }
-}
-
-function handleSearch() {
-    const searchInput = document.querySelector('.search-input');
-    const query = searchInput.value.toLowerCase().trim();
-    const promptCards = document.querySelectorAll('.prompt-card');
-    
-    promptCards.forEach(card => {
-        const title = card.querySelector('.prompt-title').textContent.toLowerCase();
-        const description = card.querySelector('.prompt-description').textContent.toLowerCase();
-        
-        if (title.includes(query) || description.includes(query) || query === '') {
-            card.style.display = 'block';
-        } else {
-            card.style.display = 'none';
-        }
-    });
-}
+// Duplicate search function removed - using proper PromptManager-based search
 
 // Modal Management
 function showCategoryModal(mode, categoryId = null, parentId = null) {
@@ -1102,9 +1335,161 @@ function initializeButtons() {
     });
 }
 
+// Prompt Management Variables
+let currentEditingPromptId = null;
+
+// Show Prompt Modal
+function showPromptModal(mode = 'add', promptId = null) {
+    const modal = document.getElementById('promptModal');
+    const modalOverlay = document.getElementById('modalOverlay');
+    const modalTitle = document.getElementById('promptModalTitle');
+    const form = document.getElementById('promptForm');
+    
+    if (!modal || !modalOverlay) return;
+    
+    // Reset form
+    form.reset();
+    currentEditingPromptId = null;
+    
+    // Setup modal for add or edit mode
+    if (mode === 'edit' && promptId) {
+        const prompt = promptManager.getPrompt(promptId);
+        if (prompt) {
+            modalTitle.textContent = 'Edit Prompt';
+            document.getElementById('promptTitle').value = prompt.title;
+            document.getElementById('promptContent').value = prompt.content;
+            document.getElementById('promptAiModel').value = prompt.aiModel;
+            document.getElementById('promptTags').value = prompt.tags.join(', ');
+            currentEditingPromptId = promptId;
+            
+            // Set category and subcategory
+            populateCategoryDropdown();
+            setTimeout(() => {
+                document.getElementById('promptCategory').value = prompt.category;
+                populateSubcategoryDropdown();
+                setTimeout(() => {
+                    if (prompt.subcategory) {
+                        document.getElementById('promptSubcategory').value = prompt.subcategory;
+                    }
+                }, 50);
+            }, 50);
+        }
+    } else {
+        modalTitle.textContent = 'Add New Prompt';
+        populateCategoryDropdown();
+    }
+    
+    // Show modal
+    modal.classList.add('show');
+    modalOverlay.classList.add('show');
+    document.body.style.overflow = 'hidden';
+    
+    // Focus on title field
+    setTimeout(() => {
+        document.getElementById('promptTitle').focus();
+    }, 100);
+}
+
+// Hide Prompt Modal
+function hidePromptModal() {
+    const modal = document.getElementById('promptModal');
+    const modalOverlay = document.getElementById('modalOverlay');
+    
+    modal.classList.remove('show');
+    modalOverlay.classList.remove('show');
+    document.body.style.overflow = '';
+    currentEditingPromptId = null;
+}
+
+// Populate Category Dropdown
+function populateCategoryDropdown() {
+    const categorySelect = document.getElementById('promptCategory');
+    const categories = categoryManager.getAllCategories();
+    
+    // Clear existing options except first
+    categorySelect.innerHTML = '<option value="">Select category...</option>';
+    
+    // Add categories (exclude 'all' category for prompts)
+    Object.values(categories).forEach(category => {
+        if (category.id !== 'all') {
+            const option = document.createElement('option');
+            option.value = category.id;
+            option.textContent = category.name;
+            categorySelect.appendChild(option);
+        }
+    });
+}
+
+// Populate Subcategory Dropdown
+function populateSubcategoryDropdown() {
+    const categorySelect = document.getElementById('promptCategory');
+    const subcategorySelect = document.getElementById('promptSubcategory');
+    const selectedCategoryId = categorySelect.value;
+    
+    // Clear subcategory options
+    subcategorySelect.innerHTML = '<option value="">Select subcategory...</option>';
+    
+    if (selectedCategoryId) {
+        const category = categoryManager.getCategory(selectedCategoryId);
+        if (category && category.subcategories) {
+            Object.values(category.subcategories).forEach(subcategory => {
+                const option = document.createElement('option');
+                option.value = subcategory.id;
+                option.textContent = subcategory.name;
+                subcategorySelect.appendChild(option);
+            });
+            subcategorySelect.disabled = false;
+        } else {
+            subcategorySelect.disabled = true;
+        }
+    } else {
+        subcategorySelect.disabled = true;
+    }
+}
+
+// Handle Prompt Form Submission
+function handlePromptFormSubmit(e) {
+    e.preventDefault();
+    
+    const formData = {
+        title: document.getElementById('promptTitle').value.trim(),
+        content: document.getElementById('promptContent').value.trim(),
+        category: document.getElementById('promptCategory').value,
+        subcategory: document.getElementById('promptSubcategory').value || null,
+        aiModel: document.getElementById('promptAiModel').value,
+        tags: document.getElementById('promptTags').value
+            .split(',')
+            .map(tag => tag.trim())
+            .filter(tag => tag.length > 0)
+    };
+    
+    // Validate required fields
+    if (!formData.title || !formData.content || !formData.category || !formData.aiModel) {
+        alert('Please fill in all required fields.');
+        return;
+    }
+    
+    try {
+        if (currentEditingPromptId) {
+            // Update existing prompt
+            promptManager.updatePrompt(currentEditingPromptId, formData);
+        } else {
+            // Create new prompt
+            promptManager.createPrompt(formData);
+        }
+        
+        // Hide modal and refresh display
+        hidePromptModal();
+        refreshCurrentCategoryDisplay();
+        
+    } catch (error) {
+        console.error('Error saving prompt:', error);
+        alert('Error saving prompt. Please try again.');
+    }
+}
+
 function addNewPrompt() {
-    alert('Add New Prompt feature would open a modal or new page to create a prompt.');
-    // Future implementation: Open modal or navigate to create prompt page
+    showPromptModal('add');
 }
 
 function addNewCategory() {
@@ -1142,15 +1527,112 @@ function addCategoryToSidebar(categoryName) {
     categoryList.appendChild(listItem);
 }
 
-// Prompt Action Handlers
-function editPrompt(title) {
-    alert(`Edit functionality for "${title}" would open an edit modal or form.`);
-    // Future implementation: Open edit modal with prompt details
+// Initialize Prompt Modal Event Listeners
+function initializePromptModal() {
+    const promptModal = document.getElementById('promptModal');
+    const promptModalClose = document.getElementById('promptModalClose');
+    const promptCancelBtn = document.getElementById('promptCancelBtn');
+    const promptForm = document.getElementById('promptForm');
+    const promptCategory = document.getElementById('promptCategory');
+    
+    // Form submission
+    if (promptForm) {
+        promptForm.addEventListener('submit', handlePromptFormSubmit);
+    }
+    
+    // Close modal events
+    if (promptModalClose) {
+        promptModalClose.addEventListener('click', hidePromptModal);
+    }
+    
+    if (promptCancelBtn) {
+        promptCancelBtn.addEventListener('click', hidePromptModal);
+    }
+    
+    // Category change event
+    if (promptCategory) {
+        promptCategory.addEventListener('change', populateSubcategoryDropdown);
+    }
+    
+    // Click outside modal to close
+    if (promptModal) {
+        promptModal.addEventListener('click', (e) => {
+            if (e.target === promptModal) {
+                hidePromptModal();
+            }
+        });
+    }
+    
+    // Escape key handler for prompt modal
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            const promptModal = document.getElementById('promptModal');
+            if (promptModal && promptModal.classList.contains('show')) {
+                hidePromptModal();
+            }
+        }
+    });
 }
 
-function usePrompt(title) {
-    alert(`Use functionality for "${title}" would copy prompt or open it in a workspace.`);
-    // Future implementation: Copy to clipboard or open in prompt workspace
+// Refresh Current Category Display
+function refreshCurrentCategoryDisplay() {
+    const activeSub = document.querySelector('.subcategory-item.active');
+    const activeCat = document.querySelector('.category-main.active');
+    let name = 'All Prompts';
+    if (activeSub) name = activeSub.querySelector('.subcategory-button')?.textContent || name;
+    else if (activeCat) name = activeCat.querySelector('.category-button')?.textContent || name;
+    updateContentTitle(name);
+    updatePromptsDisplay(name);
+}
+
+// Prompt Action Handlers
+function editPrompt(promptId) {
+    showPromptModal('edit', promptId);
+}
+
+function usePrompt(prompt) {
+    // Copy prompt content to clipboard
+    if (navigator.clipboard && navigator.clipboard.writeText) {
+        navigator.clipboard.writeText(prompt.content).then(() => {
+            // Show success message
+            const originalTitle = prompt.title;
+            alert(`Prompt "${originalTitle}" copied to clipboard!`);
+        }).catch(() => {
+            // Fallback for older browsers
+            copyToClipboardFallback(prompt.content, prompt.title);
+        });
+    } else {
+        copyToClipboardFallback(prompt.content, prompt.title);
+    }
+}
+
+function copyToClipboardFallback(text, title) {
+    const textArea = document.createElement('textarea');
+    textArea.value = text;
+    textArea.style.position = 'fixed';
+    textArea.style.left = '-999999px';
+    textArea.style.top = '-999999px';
+    document.body.appendChild(textArea);
+    textArea.focus();
+    textArea.select();
+    
+    try {
+        document.execCommand('copy');
+        alert(`Prompt "${title}" copied to clipboard!`);
+    } catch (err) {
+        alert('Unable to copy to clipboard. Please copy manually.');
+        console.error('Copy to clipboard failed:', err);
+    }
+    
+    document.body.removeChild(textArea);
+}
+
+function deletePrompt(promptId) {
+    const prompt = promptManager.getPrompt(promptId);
+    if (prompt && confirm(`Are you sure you want to delete the prompt "${prompt.title}"?`)) {
+        promptManager.deletePrompt(promptId);
+        refreshCurrentCategoryDisplay();
+    }
 }
 
 // Utility Functions

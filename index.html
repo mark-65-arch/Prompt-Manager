@@ -48,17 +48,7 @@
             </div>
 
             <div class="prompts-grid">
-                <div class="prompt-card">
-                    <div class="prompt-header">
-                        <h3 class="prompt-title">Welcome to AI Prompt Manager</h3>
-                        <span class="prompt-category">General</span>
-                    </div>
-                    <p class="prompt-description">This is your prompt management dashboard. Use the sidebar to organize your prompts by categories, and click "Add New Prompt" to get started.</p>
-                    <div class="prompt-actions">
-                        <button class="btn-secondary">Edit</button>
-                        <button class="btn-primary">Use Prompt</button>
-                    </div>
-                </div>
+                <!-- Prompts will be dynamically populated here -->
             </div>
         </main>
 
@@ -107,6 +97,71 @@
                     <button type="button" class="btn-secondary" id="confirmCancelBtn">Cancel</button>
                     <button type="button" class="btn-danger" id="confirmDeleteBtn">Delete</button>
                 </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Prompt Management Modal -->
+    <div class="modal" id="promptModal">
+        <div class="modal-content large">
+            <div class="modal-header">
+                <h3 class="modal-title" id="promptModalTitle">Add New Prompt</h3>
+                <button class="modal-close" id="promptModalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="promptForm">
+                    <div class="form-group">
+                        <label for="promptTitle">Title</label>
+                        <input type="text" id="promptTitle" class="form-input" required placeholder="Enter prompt title">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="promptContent">Prompt Content</label>
+                        <textarea id="promptContent" class="form-textarea" required placeholder="Enter your prompt content here..." rows="8"></textarea>
+                    </div>
+                    
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="promptCategory">Category</label>
+                            <select id="promptCategory" class="form-select" required>
+                                <option value="">Select category...</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="promptSubcategory">Subcategory</label>
+                            <select id="promptSubcategory" class="form-select">
+                                <option value="">Select subcategory...</option>
+                            </select>
+                        </div>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="promptAiModel">AI Model</label>
+                        <select id="promptAiModel" class="form-select" required>
+                            <option value="">Select AI model...</option>
+                            <option value="ChatGPT">ChatGPT (OpenAI)</option>
+                            <option value="Claude">Claude (Anthropic)</option>
+                            <option value="Gemini">Gemini (Google)</option>
+                            <option value="Llama">Llama (Meta)</option>
+                            <option value="Mistral">Mistral AI</option>
+                            <option value="Perplexity">Perplexity</option>
+                            <option value="Cohere">Cohere</option>
+                            <option value="Other">Other</option>
+                        </select>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="promptTags">Tags</label>
+                        <input type="text" id="promptTags" class="form-input" placeholder="Enter tags separated by commas (e.g., writing, creative, blog)">
+                        <small class="form-help">Separate multiple tags with commas</small>
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="button" class="btn-secondary" id="promptCancelBtn">Cancel</button>
+                        <button type="submit" class="btn-primary" id="promptSubmitBtn">Save Prompt</button>
+                    </div>
+                </form>
             </div>
         </div>
     </div>
