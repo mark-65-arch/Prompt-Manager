@@ -192,6 +192,38 @@
                         <textarea id="promptContent" class="form-textarea" required placeholder="Enter your prompt content here..." rows="8"></textarea>
                     </div>
                     
+                    <!-- Template Settings -->
+                    <div class="form-group">
+                        <div class="template-settings">
+                            <label class="checkbox-label">
+                                <input type="checkbox" id="isTemplate" class="form-checkbox">
+                                <span class="checkbox-text">This is a template with placeholder variables</span>
+                            </label>
+                        </div>
+                        
+                        <div class="template-helper" id="templateHelper" style="display: none;">
+                            <div class="template-info">
+                                <h4 class="template-title">📝 Template Variables</h4>
+                                <p class="template-description">Use placeholder variables in your prompt content using the format [VARIABLE_NAME]. Common variables:</p>
+                                <div class="template-variables">
+                                    <span class="variable-tag" data-var="[TOPIC]">[TOPIC]</span>
+                                    <span class="variable-tag" data-var="[AUDIENCE]">[AUDIENCE]</span>
+                                    <span class="variable-tag" data-var="[STYLE]">[STYLE]</span>
+                                    <span class="variable-tag" data-var="[FORMAT]">[FORMAT]</span>
+                                    <span class="variable-tag" data-var="[GOAL]">[GOAL]</span>
+                                    <span class="variable-tag" data-var="[CONTEXT]">[CONTEXT]</span>
+                                    <span class="variable-tag" data-var="[LENGTH]">[LENGTH]</span>
+                                    <span class="variable-tag" data-var="[TONE]">[TONE]</span>
+                                </div>
+                                <small class="template-note">Click on any variable to add it to your prompt content.</small>
+                                <div class="detected-variables" id="detectedVariables" style="display: none;">
+                                    <strong>Variables found in your content:</strong>
+                                    <div class="detected-vars-list" id="detectedVarsList"></div>
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                    
                     <div class="form-row">
                         <div class="form-group">
                             <label for="promptCategory">Category</label>

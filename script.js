@@ -349,6 +349,8 @@ class PromptManager {
             aiModel: promptData.aiModel,
             tags: promptData.tags || [],
             starRating: parseInt(promptData.starRating) || 0,
+            isTemplate: promptData.isTemplate || false,
+            templateVariables: promptData.templateVariables || [],
             usageHistory: [],
             version: 1,
             versions: [],
@@ -2439,6 +2441,14 @@ function showPromptModal(mode = 'add', promptId = null) {
             document.getElementById('promptContent').value = prompt.content;
             document.getElementById('promptAiModel').value = prompt.aiModel;
             document.getElementById('promptTags').value = prompt.tags.join(', ');
+            
+            // Set template checkbox and show helper if needed
+            const isTemplateCheckbox = document.getElementById('isTemplate');
+            if (isTemplateCheckbox) {
+                isTemplateCheckbox.checked = prompt.isTemplate || false;
+                toggleTemplateHelper(prompt.isTemplate || false);
+            }
+            
             currentEditingPromptId = promptId;
             
             // Set category and subcategory
@@ -2456,6 +2466,13 @@ function showPromptModal(mode = 'add', promptId = null) {
     } else {
         modalTitle.textContent = 'Add New Prompt';
         populateCategoryDropdown();
+        
+        // Reset template checkbox and hide helper
+        const isTemplateCheckbox = document.getElementById('isTemplate');
+        if (isTemplateCheckbox) {
+            isTemplateCheckbox.checked = false;
+            toggleTemplateHelper(false);
+        }
     }
     
     // Show modal
@@ -2530,16 +2547,21 @@ function populateSubcategoryDropdown() {
 function handlePromptFormSubmit(e) {
     e.preventDefault();
     
+    const isTemplateChecked = document.getElementById('isTemplate').checked;
+    const content = document.getElementById('promptContent').value.trim();
+    
     const formData = {
         title: document.getElementById('promptTitle').value.trim(),
-        content: document.getElementById('promptContent').value.trim(),
+        content: content,
         category: document.getElementById('promptCategory').value,
         subcategory: document.getElementById('promptSubcategory').value || null,
         aiModel: document.getElementById('promptAiModel').value,
         tags: document.getElementById('promptTags').value
             .split(',')
             .map(tag => tag.trim())
-            .filter(tag => tag.length > 0)
+            .filter(tag => tag.length > 0),
+        isTemplate: isTemplateChecked,
+        templateVariables: isTemplateChecked ? extractTemplateVariables(content) : []
     };
     
     // Validate required fields
@@ -2606,6 +2628,99 @@ function addCategoryToSidebar(categoryName) {
     categoryList.appendChild(listItem);
 }
 
+// Template System Functions
+function extractTemplateVariables(content) {
+    const variableRegex = /\[([A-Z_][A-Z0-9_]*)\]/g;
+    const variables = [];
+    let match;
+    
+    while ((match = variableRegex.exec(content)) !== null) {
+        const variable = match[0]; // Full match including brackets
+        if (!variables.includes(variable)) {
+            variables.push(variable);
+        }
+    }
+    
+    return variables;
+}
+
+function toggleTemplateHelper(show) {
+    const templateHelper = document.getElementById('templateHelper');
+    if (templateHelper) {
+        templateHelper.style.display = show ? 'block' : 'none';
+        if (show) {
+            updateDetectedVariables();
+        }
+    }
+}
+
+function updateDetectedVariables() {
+    const content = document.getElementById('promptContent').value;
+    const variables = extractTemplateVariables(content);
+    const detectedVariables = document.getElementById('detectedVariables');
+    const detectedVarsList = document.getElementById('detectedVarsList');
+    
+    if (variables.length > 0) {
+        detectedVariables.style.display = 'block';
+        detectedVarsList.innerHTML = variables
+            .map(variable => `<span class="detected-var">${variable}</span>`)
+            .join('');
+    } else {
+        detectedVariables.style.display = 'none';
+    }
+}
+
+function insertVariableAtCursor(variable) {
+    const textarea = document.getElementById('promptContent');
+    const start = textarea.selectionStart;
+    const end = textarea.selectionEnd;
+    const text = textarea.value;
+    
+    // Insert the variable at cursor position
+    const newText = text.substring(0, start) + variable + text.substring(end);
+    textarea.value = newText;
+    
+    // Set cursor position after the inserted variable
+    const newPosition = start + variable.length;
+    textarea.setSelectionRange(newPosition, newPosition);
+    textarea.focus();
+    
+    // Update detected variables if template helper is visible
+    if (document.getElementById('isTemplate').checked) {
+        updateDetectedVariables();
+    }
+}
+
+function initializeTemplateSystem() {
+    const isTemplateCheckbox = document.getElementById('isTemplate');
+    const promptContent = document.getElementById('promptContent');
+    const variableTags = document.querySelectorAll('.variable-tag');
+    
+    // Template checkbox change handler
+    if (isTemplateCheckbox) {
+        isTemplateCheckbox.addEventListener('change', (e) => {
+            toggleTemplateHelper(e.target.checked);
+        });
+    }
+    
+    // Content change handler for variable detection
+    if (promptContent) {
+        promptContent.addEventListener('input', () => {
+            if (document.getElementById('isTemplate').checked) {
+                updateDetectedVariables();
+            }
+        });
+    }
+    
+    // Variable tag click handlers
+    variableTags.forEach(tag => {
+        tag.addEventListener('click', () => {
+            const variable = tag.getAttribute('data-var');
+            insertVariableAtCursor(variable);
+        });
+    });
+}
+
 // Initialize Prompt Modal Event Listeners
 function initializePromptModal() {
     const promptModal = document.getElementById('promptModal');
@@ -2651,6 +2766,9 @@ function initializePromptModal() {
             }
         }
     });
+    
+    // Initialize template system
+    initializeTemplateSystem();
 }
 
 // Refresh Current Category Display
