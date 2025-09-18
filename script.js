@@ -2570,22 +2570,38 @@ function handlePromptFormSubmit(e) {
         return;
     }
     
-    try {
-        if (currentEditingPromptId) {
-            // Update existing prompt
-            promptManager.updatePrompt(currentEditingPromptId, formData);
-        } else {
-            // Create new prompt
-            promptManager.createPrompt(formData);
+    // Check for duplicates before saving
+    const similarPrompts = findSimilarPrompts(
+        formData.title, 
+        formData.content, 
+        currentEditingPromptId
+    );
+    
+    const savePrompt = () => {
+        try {
+            if (currentEditingPromptId) {
+                // Update existing prompt
+                promptManager.updatePrompt(currentEditingPromptId, formData);
+            } else {
+                // Create new prompt
+                promptManager.createPrompt(formData);
+            }
+            
+            // Hide modal and refresh display
+            hidePromptModal();
+            refreshCurrentCategoryDisplay();
+            
+        } catch (error) {
+            console.error('Error saving prompt:', error);
+            alert('Error saving prompt. Please try again.');
         }
-        
-        // Hide modal and refresh display
-        hidePromptModal();
-        refreshCurrentCategoryDisplay();
-        
-    } catch (error) {
-        console.error('Error saving prompt:', error);
-        alert('Error saving prompt. Please try again.');
+    };
+    
+    // Show duplicate warning if similar prompts found
+    if (similarPrompts.length > 0) {
+        showDuplicateWarning(similarPrompts, savePrompt);
+    } else {
+        savePrompt();
     }
 }
 
@@ -2626,6 +2642,202 @@ function addCategoryToSidebar(categoryName) {
     
     listItem.appendChild(button);
     categoryList.appendChild(listItem);
+}
+
+// Duplicate Detection System
+function calculateSimilarity(str1, str2) {
+    // Simple similarity calculation using Levenshtein distance
+    const getLevenshteinDistance = (a, b) => {
+        if (a.length === 0) return b.length;
+        if (b.length === 0) return a.length;
+        
+        const matrix = [];
+        
+        for (let i = 0; i <= b.length; i++) {
+            matrix[i] = [i];
+        }
+        
+        for (let j = 0; j <= a.length; j++) {
+            matrix[0][j] = j;
+        }
+        
+        for (let i = 1; i <= b.length; i++) {
+            for (let j = 1; j <= a.length; j++) {
+                if (b.charAt(i - 1) === a.charAt(j - 1)) {
+                    matrix[i][j] = matrix[i - 1][j - 1];
+                } else {
+                    matrix[i][j] = Math.min(
+                        matrix[i - 1][j - 1] + 1,
+                        matrix[i][j - 1] + 1,
+                        matrix[i - 1][j] + 1
+                    );
+                }
+            }
+        }
+        
+        return matrix[b.length][a.length];
+    };
+    
+    const maxLength = Math.max(str1.length, str2.length);
+    if (maxLength === 0) return 1.0;
+    
+    const distance = getLevenshteinDistance(str1.toLowerCase(), str2.toLowerCase());
+    return (maxLength - distance) / maxLength;
+}
+
+function findSimilarPrompts(title, content, excludeId = null) {
+    const allPrompts = promptManager.getAllPrompts();
+    const similarities = [];
+    
+    // Normalize strings for comparison
+    const normalizeText = (text) => {
+        return text.toLowerCase()
+            .replace(/[^\w\s]/g, ' ')
+            .replace(/\s+/g, ' ')
+            .trim();
+    };
+    
+    const normalizedTitle = normalizeText(title);
+    const normalizedContent = normalizeText(content);
+    
+    for (const prompt of allPrompts) {
+        if (excludeId && prompt.id === excludeId) continue;
+        
+        const promptNormalizedTitle = normalizeText(prompt.title);
+        const promptNormalizedContent = normalizeText(prompt.content);
+        
+        // Calculate title similarity (weighted 40%)
+        const titleSimilarity = calculateSimilarity(normalizedTitle, promptNormalizedTitle);
+        
+        // Calculate content similarity (weighted 60%)
+        const contentSimilarity = calculateSimilarity(normalizedContent, promptNormalizedContent);
+        
+        // Combined similarity score
+        const overallSimilarity = (titleSimilarity * 0.4) + (contentSimilarity * 0.6);
+        
+        // Consider duplicates if similarity > 75%
+        if (overallSimilarity > 0.75) {
+            similarities.push({
+                prompt,
+                similarity: overallSimilarity,
+                titleSimilarity,
+                contentSimilarity
+            });
+        }
+    }
+    
+    return similarities.sort((a, b) => b.similarity - a.similarity);
+}
+
+function showDuplicateWarning(similarPrompts, callback) {
+    const modal = document.createElement('div');
+    modal.className = 'modal show';
+    modal.style.zIndex = '10001';
+    
+    const modalContent = document.createElement('div');
+    modalContent.className = 'modal-content';
+    modalContent.style.maxWidth = '600px';
+    
+    const header = document.createElement('div');
+    header.className = 'modal-header';
+    header.innerHTML = `
+        <h3 class="modal-title">⚠️ Similar Prompts Found</h3>
+        <button class="modal-close" onclick="this.closest('.modal').remove()">&times;</button>
+    `;
+    
+    const body = document.createElement('div');
+    body.className = 'modal-body';
+    
+    const description = document.createElement('p');
+    description.innerHTML = `We found ${similarPrompts.length} prompt${similarPrompts.length > 1 ? 's' : ''} that appear similar to the one you're creating:`;
+    body.appendChild(description);
+    
+    const similarList = document.createElement('div');
+    similarList.className = 'similar-prompts-list';
+    similarList.style.cssText = `
+        max-height: 300px;
+        overflow-y: auto;
+        margin: 1rem 0;
+        border: 1px solid var(--border-primary);
+        border-radius: 0.5rem;
+    `;
+    
+    similarPrompts.slice(0, 5).forEach((item, index) => {
+        const promptItem = document.createElement('div');
+        promptItem.className = 'similar-prompt-item';
+        promptItem.style.cssText = `
+            padding: 1rem;
+            border-bottom: 1px solid var(--border-primary);
+            background-color: var(--bg-secondary);
+        `;
+        if (index === similarPrompts.length - 1) {
+            promptItem.style.borderBottom = 'none';
+        }
+        
+        const similarityPercent = Math.round(item.similarity * 100);
+        promptItem.innerHTML = `
+            <div style="display: flex; justify-content: space-between; align-items: flex-start; margin-bottom: 0.5rem;">
+                <strong style="color: var(--text-primary);">${item.prompt.title}</strong>
+                <span style="color: var(--accent-blue); font-weight: 600; font-size: 0.875rem;">${similarityPercent}% similar</span>
+            </div>
+            <div style="color: var(--text-secondary); font-size: 0.875rem; line-height: 1.4;">
+                ${item.prompt.content.substring(0, 100)}${item.prompt.content.length > 100 ? '...' : ''}
+            </div>
+            <div style="margin-top: 0.5rem; color: var(--text-tertiary); font-size: 0.75rem;">
+                Category: ${item.prompt.category}${item.prompt.subcategory ? ` → ${item.prompt.subcategory}` : ''}
+            </div>
+        `;
+        
+        similarList.appendChild(promptItem);
+    });
+    
+    body.appendChild(similarList);
+    
+    const question = document.createElement('p');
+    question.innerHTML = 'Would you like to proceed with creating this prompt anyway?';
+    question.style.fontWeight = '500';
+    body.appendChild(question);
+    
+    const actions = document.createElement('div');
+    actions.className = 'form-actions';
+    actions.innerHTML = `
+        <button type="button" class="btn-secondary" onclick="this.closest('.modal').remove()">Cancel</button>
+        <button type="button" class="btn-primary" onclick="this.closest('.modal').remove(); (${callback.toString()})()">Create Anyway</button>
+    `;
+    
+    modalContent.appendChild(header);
+    modalContent.appendChild(body);
+    modalContent.appendChild(actions);
+    modal.appendChild(modalContent);
+    
+    // Add modal overlay
+    const overlay = document.createElement('div');
+    overlay.className = 'modal-overlay show';
+    overlay.style.zIndex = '10000';
+    overlay.onclick = () => {
+        modal.remove();
+        overlay.remove();
+    };
+    
+    document.body.appendChild(overlay);
+    document.body.appendChild(modal);
+    document.body.style.overflow = 'hidden';
+    
+    // Clean up when modal is removed
+    const observer = new MutationObserver((mutations) => {
+        mutations.forEach((mutation) => {
+            if (mutation.type === 'childList') {
+                mutation.removedNodes.forEach((node) => {
+                    if (node === modal) {
+                        overlay.remove();
+                        document.body.style.overflow = '';
+                        observer.disconnect();
+                    }
+                });
+            }
+        });
+    });
+    observer.observe(document.body, { childList: true });
 }
 
 // Template System Functions
