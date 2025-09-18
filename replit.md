@@ -10,6 +10,13 @@ Preferred communication style: Simple, everyday language.
 
 ## System Architecture
 
+### Replit Environment Setup
+- **HTTP Server**: Uses Node.js http-server package to serve static files on port 5000 with CORS enabled
+- **Workflow Configuration**: Automated server startup with `npx http-server . -p 5000 -a 0.0.0.0 --cors`
+- **Host Configuration**: Properly configured to allow all hosts (0.0.0.0) for Replit proxy compatibility
+- **Deployment**: Configured for autoscale deployment with production-ready server settings
+- **Date Imported**: September 18, 2025
+
 ### Frontend Architecture
 - **Single-Page Application (SPA)**: Built with vanilla HTML, CSS, and JavaScript without any frontend frameworks
 - **Responsive Grid Layout**: Uses CSS Grid for main layout structure with defined areas for header, sidebar, and main content
