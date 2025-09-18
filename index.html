@@ -5,35 +5,6 @@
     <meta name="viewport" content="width=device-width, initial-scale=1.0">
     <title>AI Prompt Manager</title>
     <link rel="stylesheet" href="styles.css">
-    <script>
-        // Simple inline Octokit loader as fallback
-        window.OctokitLibraryLoaded = false;
-        
-        // Try loading from CDN first
-        const script = document.createElement('script');
-        script.src = 'https://cdn.skypack.dev/@octokit/rest@20.0.0';
-        script.type = 'module';
-        script.onload = function() {
-            import('https://cdn.skypack.dev/@octokit/rest@20.0.0')
-                .then(module => {
-                    window.Octokit = module.Octokit;
-                    window.OctokitLibraryLoaded = true;
-                    console.log('Octokit loaded successfully from CDN');
-                })
-                .catch(err => {
-                    console.warn('Failed to load Octokit from CDN:', err);
-                    // Fallback: create a dummy for now
-                    window.Octokit = null;
-                    window.OctokitLibraryLoaded = false;
-                });
-        };
-        script.onerror = function() {
-            console.warn('CDN script failed to load');
-            window.Octokit = null;
-            window.OctokitLibraryLoaded = false;
-        };
-        document.head.appendChild(script);
-    </script>
 </head>
 <body>
     <div class="app-container">
