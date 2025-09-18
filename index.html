@@ -16,9 +16,14 @@
                 <span></span>
             </button>
             <h1 class="app-title">AI Prompt Manager</h1>
-            <button class="theme-toggle-btn" id="themeToggleBtn" title="Toggle dark/light theme" aria-label="Toggle theme">
-                <span class="theme-icon">🌙</span>
-            </button>
+            <div class="header-controls">
+                <button class="settings-btn" id="settingsBtn" title="Settings" aria-label="Open settings">
+                    <span class="settings-icon">⚙️</span>
+                </button>
+                <button class="theme-toggle-btn" id="themeToggleBtn" title="Toggle dark/light theme" aria-label="Toggle theme">
+                    <span class="theme-icon">🌙</span>
+                </button>
+            </div>
         </header>
 
         <!-- Sidebar -->
@@ -589,6 +594,155 @@
     <!-- Modal Overlay -->
     <div class="modal-overlay" id="modalOverlay"></div>
 
+    <!-- Settings Panel -->
+    <div class="settings-overlay" id="settingsOverlay"></div>
+    <div class="settings-panel" id="settingsPanel">
+        <div class="settings-panel-header">
+            <h3 class="settings-panel-title">⚙️ Settings</h3>
+            <button class="settings-panel-close" id="settingsPanelClose" aria-label="Close settings">×</button>
+        </div>
+        <div class="settings-panel-body">
+            <!-- GitHub Integration Section -->
+            <div class="settings-section">
+                <h4 class="settings-section-title">GitHub Integration</h4>
+                <div class="github-settings-section" id="githubSettingsSection">
+                    <div class="github-settings-header">
+                        <h5 class="github-settings-title">
+                            📂 GitHub Backup
+                            <span class="github-status-indicator disconnected" id="githubStatusIndicator">
+                                <span class="github-status-dot"></span>
+                                Disconnected
+                            </span>
+                        </h5>
+                    </div>
+                    
+                    <form id="githubSettingsForm">
+                        <div class="github-form-row" id="githubTokenGroup" style="display: none;">
+                            <div class="form-group">
+                                <label for="githubToken">Personal Access Token</label>
+                                <input type="password" id="githubToken" class="form-input" placeholder="ghp_xxxxxxxxxxxxxxxxxxxx">
+                                <small class="form-help">Required for GitHub Pages deployment. <a href="https://github.com/settings/tokens" target="_blank">Create token</a> with 'repo' scope.</small>
+                            </div>
+                        </div>
+                        
+                        <div class="github-form-grid">
+                            <div class="form-group">
+                                <label for="githubRepository">Repository</label>
+                                <select id="githubRepository" class="form-select">
+                                    <option value="">Select repository...</option>
+                                </select>
+                                <small class="form-help">Choose where to store your backups</small>
+                            </div>
+                            
+                            <div class="form-group">
+                                <label for="githubBranch">Branch</label>
+                                <input type="text" id="githubBranch" class="form-input" value="main" placeholder="main">
+                                <small class="form-help">Branch name for backups</small>
+                            </div>
+                        </div>
+                        
+                        <div class="github-form-row">
+                            <div class="form-group">
+                                <label class="checkbox-label">
+                                    <input type="checkbox" id="githubAutoBackup" class="form-checkbox">
+                                    <span class="checkbox-text">Enable automatic backup reminders</span>
+                                </label>
+                            </div>
+                        </div>
+                        
+                        <div class="form-group" id="backupFrequencyGroup" style="display: none;">
+                            <label for="backupFrequency">Backup Frequency</label>
+                            <select id="backupFrequency" class="form-select">
+                                <option value="daily">Daily</option>
+                                <option value="weekly">Weekly</option>
+                                <option value="monthly">Monthly</option>
+                            </select>
+                        </div>
+                        
+                        <div class="github-backup-actions">
+                            <button type="button" class="github-backup-btn primary" id="manualBackupBtn">
+                                🔄 Backup Now
+                            </button>
+                            <button type="button" class="github-backup-btn secondary" id="viewBackupsBtn">
+                                📋 View Backups
+                            </button>
+                            <button type="button" class="github-backup-btn secondary" id="testConnectionBtn">
+                                🔗 Test Connection
+                            </button>
+                            
+                            <div class="github-backup-info" id="githubBackupInfo">
+                                <span><strong>Last Backup:</strong> Never</span>
+                                <span>Status: Not configured</span>
+                            </div>
+                        </div>
+                    </form>
+                </div>
+            </div>
+            
+            <!-- Performance Settings -->
+            <div class="settings-section">
+                <h4 class="settings-section-title">Performance & Storage</h4>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="enableOfflineMode" class="form-checkbox">
+                        <span class="checkbox-text">Enable offline mode</span>
+                    </label>
+                    <small class="form-help">Cache data for offline access</small>
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="enableAnimations" class="form-checkbox" checked>
+                        <span class="checkbox-text">Enable animations</span>
+                    </label>
+                    <small class="form-help">Disable for better performance</small>
+                </div>
+                <div class="form-group">
+                    <label for="maxVersionHistory">Version History Limit</label>
+                    <select id="maxVersionHistory" class="form-select">
+                        <option value="5">5 versions</option>
+                        <option value="10" selected>10 versions</option>
+                        <option value="20">20 versions</option>
+                        <option value="50">50 versions</option>
+                    </select>
+                    <small class="form-help">Maximum versions to keep per prompt</small>
+                </div>
+            </div>
+            
+            <!-- Help & Tutorial Settings -->
+            <div class="settings-section">
+                <h4 class="settings-section-title">Help & Tutorials</h4>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="showHelpTips" class="form-checkbox" checked>
+                        <span class="checkbox-text">Show helpful tips</span>
+                    </label>
+                </div>
+                <div class="form-group">
+                    <label class="checkbox-label">
+                        <input type="checkbox" id="showKeyboardShortcuts" class="form-checkbox" checked>
+                        <span class="checkbox-text">Show keyboard shortcuts</span>
+                    </label>
+                </div>
+                <button type="button" class="github-backup-btn secondary" id="showTutorialBtn">
+                    📚 Show Tutorial
+                </button>
+            </div>
+            
+            <!-- About Section -->
+            <div class="settings-section">
+                <h4 class="settings-section-title">About</h4>
+                <div class="form-group">
+                    <p style="margin: 0; color: var(--text-secondary); font-size: 0.875rem;">
+                        <strong>AI Prompt Manager</strong> v2.0<br>
+                        Organize, categorize, and manage your AI prompts efficiently.
+                    </p>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <script src="github-integration.js"></script>
+    <script src="tutorial.js"></script>
     <script src="script.js"></script>
 </body>
 </html>

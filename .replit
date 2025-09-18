@@ -1,9 +1,10 @@
-modules = ["nodejs-20", "web"]
+modules = ["nodejs-20", "web", "python-3.11"]
 [nix]
 channel = "stable-25_05"
 
 [agent]
 expertMode = true
+integrations = ["github:1.0.0"]
 
 [workflows]
 runButton = "Project"
@@ -36,10 +37,6 @@ externalPort = 80
 [[ports]]
 localPort = 40121
 externalPort = 3000
-
-[[ports]]
-localPort = 43049
-externalPort = 3003
 
 [[ports]]
 localPort = 45399

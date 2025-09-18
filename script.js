@@ -5855,6 +5855,587 @@ class KeyboardShortcutsManager {
     }
 }
 
+// Settings Panel Management
+class SettingsManager {
+    constructor() {
+        this.isOpen = false;
+        this.settings = this.loadSettings();
+        this.init();
+    }
+
+    init() {
+        this.setupEventListeners();
+        this.applySettings();
+    }
+
+    loadSettings() {
+        const stored = localStorage.getItem('aiPromptManager_settings');
+        return stored ? JSON.parse(stored) : {
+            enableOfflineMode: false,
+            enableAnimations: true,
+            maxVersionHistory: 10,
+            showHelpTips: true,
+            showKeyboardShortcuts: true
+        };
+    }
+
+    saveSettings() {
+        localStorage.setItem('aiPromptManager_settings', JSON.stringify(this.settings));
+    }
+
+    setupEventListeners() {
+        const settingsBtn = document.getElementById('settingsBtn');
+        const settingsPanel = document.getElementById('settingsPanel');
+        const settingsPanelClose = document.getElementById('settingsPanelClose');
+        const settingsOverlay = document.getElementById('settingsOverlay');
+
+        if (settingsBtn) {
+            settingsBtn.addEventListener('click', () => this.openSettings());
+        }
+
+        if (settingsPanelClose) {
+            settingsPanelClose.addEventListener('click', () => this.closeSettings());
+        }
+
+        if (settingsOverlay) {
+            settingsOverlay.addEventListener('click', () => this.closeSettings());
+        }
+
+        // GitHub settings form
+        const githubForm = document.getElementById('githubSettingsForm');
+        if (githubForm) {
+            githubForm.addEventListener('submit', (e) => {
+                e.preventDefault();
+                this.saveGitHubSettings();
+            });
+        }
+
+        // Auto-backup checkbox handler
+        const autoBackupCheckbox = document.getElementById('githubAutoBackup');
+        if (autoBackupCheckbox) {
+            autoBackupCheckbox.addEventListener('change', (e) => {
+                const frequencyGroup = document.getElementById('backupFrequencyGroup');
+                if (frequencyGroup) {
+                    frequencyGroup.style.display = e.target.checked ? 'block' : 'none';
+                }
+            });
+        }
+
+        // GitHub buttons
+        const testConnectionBtn = document.getElementById('testConnectionBtn');
+        const manualBackupBtn = document.getElementById('manualBackupBtn');
+        const viewBackupsBtn = document.getElementById('viewBackupsBtn');
+        const showTutorialBtn = document.getElementById('showTutorialBtn');
+
+        if (testConnectionBtn && window.githubManager) {
+            testConnectionBtn.addEventListener('click', () => this.testGitHubConnection());
+        }
+
+        if (manualBackupBtn && window.githubManager) {
+            manualBackupBtn.addEventListener('click', () => this.performManualBackup());
+        }
+
+        if (viewBackupsBtn && window.githubManager) {
+            viewBackupsBtn.addEventListener('click', () => this.showBackupsList());
+        }
+
+        if (showTutorialBtn) {
+            showTutorialBtn.addEventListener('click', () => this.showTutorial());
+        }
+
+        // Performance settings
+        const enableAnimationsCheckbox = document.getElementById('enableAnimations');
+        if (enableAnimationsCheckbox) {
+            enableAnimationsCheckbox.addEventListener('change', (e) => {
+                this.settings.enableAnimations = e.target.checked;
+                this.saveSettings();
+                this.applyAnimationSettings();
+            });
+        }
+
+        const enableOfflineModeCheckbox = document.getElementById('enableOfflineMode');
+        if (enableOfflineModeCheckbox) {
+            enableOfflineModeCheckbox.addEventListener('change', (e) => {
+                this.settings.enableOfflineMode = e.target.checked;
+                this.saveSettings();
+                if (e.target.checked) {
+                    this.enableOfflineMode();
+                } else {
+                    this.disableOfflineMode();
+                }
+            });
+        }
+    }
+
+    openSettings() {
+        const settingsPanel = document.getElementById('settingsPanel');
+        const settingsOverlay = document.getElementById('settingsOverlay');
+        
+        if (settingsPanel && settingsOverlay) {
+            settingsPanel.classList.add('open');
+            settingsOverlay.classList.add('active');
+            document.body.style.overflow = 'hidden';
+            this.isOpen = true;
+            this.loadGitHubSettings();
+        }
+    }
+
+    closeSettings() {
+        const settingsPanel = document.getElementById('settingsPanel');
+        const settingsOverlay = document.getElementById('settingsOverlay');
+        
+        if (settingsPanel && settingsOverlay) {
+            settingsPanel.classList.remove('open');
+            settingsOverlay.classList.remove('active');
+            document.body.style.overflow = '';
+            this.isOpen = false;
+        }
+    }
+
+    async loadGitHubSettings() {
+        if (!window.githubManager) {
+            console.log('GitHub manager not initialized');
+            return;
+        }
+
+        try {
+            // Check environment and show appropriate UI
+            const { getEnvironmentInfo } = await import('./octokit-client.js');
+            const envInfo = getEnvironmentInfo();
+            
+            const statusIndicator = document.getElementById('githubStatusIndicator');
+            const backupInfo = document.getElementById('githubBackupInfo');
+            const tokenGroup = document.getElementById('githubTokenGroup');
+            const tokenInput = document.getElementById('githubToken');
+            
+            // Show/hide token input based on environment
+            if (tokenGroup) {
+                tokenGroup.style.display = envInfo.requiresToken ? 'block' : 'none';
+            }
+            
+            // Set current token value if available
+            if (tokenInput && envInfo.requiresToken) {
+                const settings = JSON.parse(localStorage.getItem('aiPromptManager_githubSettings') || '{}');
+                if (settings.personalAccessToken) {
+                    tokenInput.value = settings.personalAccessToken;
+                }
+            }
+
+            // Check if GitHub is properly configured
+            const isConfigured = await window.githubManager.isGitHubConfigured();
+            
+            if (isConfigured) {
+                try {
+                    // Load repositories
+                    const repositories = await window.githubManager.getUserRepositories();
+                    const repositorySelect = document.getElementById('githubRepository');
+
+                    if (repositorySelect) {
+                        repositorySelect.innerHTML = '<option value="">Select repository...</option>';
+                        repositories.forEach(repo => {
+                            const option = document.createElement('option');
+                            option.value = repo.fullName;
+                            option.textContent = `${repo.name} ${repo.private ? '(Private)' : '(Public)'}`;
+                            repositorySelect.appendChild(option);
+                        });
+
+                        // Set selected repository if saved
+                        if (window.githubManager.settings.repositoryName) {
+                            repositorySelect.value = window.githubManager.settings.repositoryName;
+                        }
+                    }
+
+                    // Update status
+                    if (statusIndicator) {
+                        statusIndicator.className = 'github-status-indicator connected';
+                        statusIndicator.innerHTML = '<span class="github-status-dot"></span>Connected';
+                    }
+
+                    // Update backup info
+                    if (backupInfo) {
+                        const lastBackup = window.githubManager.lastBackupDate 
+                            ? new Date(window.githubManager.lastBackupDate).toLocaleDateString()
+                            : 'Never';
+                        backupInfo.innerHTML = `
+                            <span><strong>Last Backup:</strong> ${lastBackup}</span>
+                            <span>Status: Ready</span>
+                        `;
+                    }
+
+                } catch (repoError) {
+                    console.warn('Failed to load repositories:', repoError);
+                    if (statusIndicator) {
+                        statusIndicator.className = 'github-status-indicator disconnected';
+                        statusIndicator.innerHTML = '<span class="github-status-dot"></span>Auth Failed';
+                    }
+                }
+            } else {
+                // Not configured
+                if (statusIndicator) {
+                    const message = envInfo.requiresToken ? 'Token Required' : 'Not Connected';
+                    statusIndicator.className = 'github-status-indicator disconnected';
+                    statusIndicator.innerHTML = `<span class="github-status-dot"></span>${message}`;
+                }
+                
+                if (backupInfo) {
+                    backupInfo.innerHTML = `
+                        <span><strong>Last Backup:</strong> Never</span>
+                        <span>Status: Not configured</span>
+                    `;
+                }
+            }
+
+            // Set form values
+            const branchInput = document.getElementById('githubBranch');
+            const autoBackupCheckbox = document.getElementById('githubAutoBackup');
+            const backupFrequencySelect = document.getElementById('backupFrequency');
+
+            if (branchInput) branchInput.value = window.githubManager.settings.branch;
+            if (autoBackupCheckbox) {
+                autoBackupCheckbox.checked = window.githubManager.settings.autoBackup;
+                const frequencyGroup = document.getElementById('backupFrequencyGroup');
+                if (frequencyGroup) {
+                    frequencyGroup.style.display = autoBackupCheckbox.checked ? 'block' : 'none';
+                }
+            }
+            if (backupFrequencySelect) backupFrequencySelect.value = window.githubManager.settings.backupFrequency;
+
+        } catch (error) {
+            console.error('Failed to load GitHub settings:', error);
+            const statusIndicator = document.getElementById('githubStatusIndicator');
+            if (statusIndicator) {
+                statusIndicator.className = 'github-status-indicator disconnected';
+                statusIndicator.innerHTML = '<span class="github-status-dot"></span>Error';
+            }
+        }
+    }
+
+    async saveGitHubSettings() {
+        if (!window.githubManager) return;
+
+        const repositorySelect = document.getElementById('githubRepository');
+        const branchInput = document.getElementById('githubBranch');
+        const autoBackupCheckbox = document.getElementById('githubAutoBackup');
+        const backupFrequencySelect = document.getElementById('backupFrequency');
+        const tokenInput = document.getElementById('githubToken');
+
+        if (repositorySelect && branchInput && autoBackupCheckbox && backupFrequencySelect) {
+            // Save personal access token if provided
+            if (tokenInput && tokenInput.value.trim()) {
+                window.githubManager.settings.personalAccessToken = tokenInput.value.trim();
+            }
+            
+            window.githubManager.settings.enabled = !!repositorySelect.value;
+            window.githubManager.settings.repositoryName = repositorySelect.value;
+            window.githubManager.settings.branch = branchInput.value || 'main';
+            window.githubManager.settings.autoBackup = autoBackupCheckbox.checked;
+            window.githubManager.settings.backupFrequency = backupFrequencySelect.value;
+
+            window.githubManager.saveSettings();
+            window.githubManager.showSuccessMessage('GitHub settings saved successfully!');
+            
+            // Reload settings to update UI
+            setTimeout(() => {
+                this.loadGitHubSettings();
+            }, 1000);
+        }
+    }
+
+    async testGitHubConnection() {
+        if (!window.githubManager) return;
+
+        try {
+            const repositories = await window.githubManager.getUserRepositories();
+            window.githubManager.showSuccessMessage(`✅ Connected successfully! Found ${repositories.length} repositories.`);
+        } catch (error) {
+            window.githubManager.showErrorMessage(`❌ Connection failed: ${error.message}`);
+        }
+    }
+
+    async performManualBackup() {
+        if (!window.githubManager) return;
+
+        try {
+            const result = await window.githubManager.backupToGitHub(true);
+            window.githubManager.showSuccessMessage(`✅ Backup completed! <a href="${result.url}" target="_blank">View on GitHub</a>`);
+        } catch (error) {
+            window.githubManager.showErrorMessage(`❌ Backup failed: ${error.message}`);
+        }
+    }
+
+    async showBackupsList() {
+        if (!window.githubManager) return;
+
+        try {
+            const backups = await window.githubManager.getBackupFiles();
+            // TODO: Show backups in a modal or dedicated UI
+            console.log('Available backups:', backups);
+            window.githubManager.showSuccessMessage(`Found ${backups.length} backup files.`);
+        } catch (error) {
+            window.githubManager.showErrorMessage(`❌ Failed to load backups: ${error.message}`);
+        }
+    }
+
+    showTutorial() {
+        // TODO: Implement tutorial system
+        alert('Tutorial system coming soon!');
+    }
+
+    applySettings() {
+        // Apply animation settings
+        this.applyAnimationSettings();
+
+        // Apply offline mode if enabled
+        if (this.settings.enableOfflineMode) {
+            this.enableOfflineMode();
+        }
+
+        // Set form values
+        const enableAnimationsCheckbox = document.getElementById('enableAnimations');
+        const enableOfflineModeCheckbox = document.getElementById('enableOfflineMode');
+        const maxVersionHistorySelect = document.getElementById('maxVersionHistory');
+        const showHelpTipsCheckbox = document.getElementById('showHelpTips');
+        const showKeyboardShortcutsCheckbox = document.getElementById('showKeyboardShortcuts');
+
+        if (enableAnimationsCheckbox) enableAnimationsCheckbox.checked = this.settings.enableAnimations;
+        if (enableOfflineModeCheckbox) enableOfflineModeCheckbox.checked = this.settings.enableOfflineMode;
+        if (maxVersionHistorySelect) maxVersionHistorySelect.value = this.settings.maxVersionHistory;
+        if (showHelpTipsCheckbox) showHelpTipsCheckbox.checked = this.settings.showHelpTips;
+        if (showKeyboardShortcutsCheckbox) showKeyboardShortcutsCheckbox.checked = this.settings.showKeyboardShortcuts;
+    }
+
+    applyAnimationSettings() {
+        const animationClass = 'animations-disabled';
+        if (this.settings.enableAnimations) {
+            document.documentElement.classList.remove(animationClass);
+        } else {
+            document.documentElement.classList.add(animationClass);
+        }
+    }
+
+    enableOfflineMode() {
+        // TODO: Implement service worker and offline caching
+        console.log('Offline mode enabled');
+    }
+
+    disableOfflineMode() {
+        // TODO: Disable service worker if possible
+        console.log('Offline mode disabled');
+    }
+}
+
+// Error Handling Enhancement
+class ErrorHandler {
+    constructor() {
+        this.init();
+    }
+
+    init() {
+        // Global error handlers
+        window.addEventListener('error', (event) => {
+            this.handleError('JavaScript Error', event.error || event.message, {
+                filename: event.filename,
+                line: event.lineno,
+                column: event.colno
+            });
+        });
+
+        window.addEventListener('unhandledrejection', (event) => {
+            this.handleError('Unhandled Promise Rejection', event.reason);
+            event.preventDefault(); // Prevent console error
+        });
+    }
+
+    handleError(type, error, context = {}) {
+        console.error(`${type}:`, error, context);
+
+        // Show user-friendly error message
+        this.showUserError(this.getUserFriendlyMessage(error));
+
+        // Log to localStorage for debugging (optional)
+        this.logError(type, error, context);
+    }
+
+    getUserFriendlyMessage(error) {
+        const errorStr = error?.toString?.() || String(error);
+        
+        if (errorStr.includes('quota')) {
+            return 'Storage is full. Please clear some data or export your prompts.';
+        } else if (errorStr.includes('network') || errorStr.includes('fetch')) {
+            return 'Network connection issue. Please check your internet connection.';
+        } else if (errorStr.includes('GitHub')) {
+            return 'GitHub integration issue. Please check your connection settings.';
+        } else {
+            return 'Something went wrong. Please refresh the page and try again.';
+        }
+    }
+
+    showUserError(message) {
+        // Create error notification
+        const errorEl = document.createElement('div');
+        errorEl.className = 'backup-message error';
+        errorEl.innerHTML = `
+            <span class="message-text">❌ ${message}</span>
+            <button class="message-close" onclick="this.closest('.backup-message').remove()">×</button>
+        `;
+        
+        document.body.appendChild(errorEl);
+        
+        setTimeout(() => {
+            if (errorEl.parentNode) {
+                errorEl.remove();
+            }
+        }, 8000);
+    }
+
+    logError(type, error, context) {
+        const errorLog = {
+            timestamp: new Date().toISOString(),
+            type,
+            error: error?.toString?.() || String(error),
+            context,
+            userAgent: navigator.userAgent,
+            url: window.location.href
+        };
+
+        try {
+            const errors = JSON.parse(localStorage.getItem('aiPromptManager_errors') || '[]');
+            errors.push(errorLog);
+            
+            // Keep only last 10 errors
+            const recentErrors = errors.slice(-10);
+            localStorage.setItem('aiPromptManager_errors', JSON.stringify(recentErrors));
+        } catch (e) {
+            console.warn('Could not log error to localStorage:', e);
+        }
+    }
+}
+
+// Initialize settings manager and error handler
+let settingsManager = null;
+let errorHandler = null;
+
+// Service Worker Registration
+function registerServiceWorker() {
+    if ('serviceWorker' in navigator) {
+        window.addEventListener('load', () => {
+            navigator.serviceWorker.register('/service-worker.js')
+                .then((registration) => {
+                    console.log('ServiceWorker registration successful with scope: ', registration.scope);
+                    
+                    // Listen for updates
+                    registration.addEventListener('updatefound', () => {
+                        const newWorker = registration.installing;
+                        newWorker.addEventListener('statechange', () => {
+                            if (newWorker.state === 'installed') {
+                                if (navigator.serviceWorker.controller) {
+                                    // New update available
+                                    showUpdateAvailableNotification();
+                                }
+                            }
+                        });
+                    });
+                })
+                .catch((err) => {
+                    console.log('ServiceWorker registration failed: ', err);
+                });
+        });
+    }
+}
+
+function showUpdateAvailableNotification() {
+    const notification = document.createElement('div');
+    notification.className = 'backup-message info';
+    notification.innerHTML = `
+        <span class="message-text">🔄 New version available! <button onclick="location.reload()" style="background:none;border:none;color:inherit;text-decoration:underline;cursor:pointer;">Refresh to update</button></span>
+        <button class="message-close" onclick="this.closest('.backup-message').remove()">×</button>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    setTimeout(() => {
+        if (notification.parentNode) {
+            notification.remove();
+        }
+    }, 10000);
+}
+
+// Enhanced initialization
+document.addEventListener('DOMContentLoaded', function() {
+    try {
+        // Initialize error handler first
+        errorHandler = new ErrorHandler();
+
+        // Register service worker for offline functionality
+        registerServiceWorker();
+
+        // Initialize GitHub manager
+        try {
+            window.githubManager = new GitHubManager();
+            console.log('GitHub manager initialized successfully');
+        } catch (error) {
+            console.warn('GitHub manager initialization failed:', error);
+            window.githubManager = null;
+        }
+
+        // Initialize tutorial manager
+        try {
+            if (typeof TutorialManager !== 'undefined') {
+                window.tutorialManager = new TutorialManager();
+                console.log('Tutorial manager initialized successfully');
+            } else {
+                console.warn('TutorialManager class not available');
+            }
+        } catch (error) {
+            console.warn('Tutorial manager initialization failed:', error);
+            window.tutorialManager = null;
+        }
+
+        // Initialize settings manager
+        settingsManager = new SettingsManager();
+
+        // Cache prompt data for offline use
+        setTimeout(() => {
+            cachePromptDataForOffline();
+        }, 2000);
+
+        console.log('Enhanced initialization completed successfully');
+    } catch (error) {
+        console.error('Enhanced initialization failed:', error);
+    }
+});
+
+// Cache prompt data for offline use
+function cachePromptDataForOffline() {
+    if ('serviceWorker' in navigator && navigator.serviceWorker.controller) {
+        const promptData = {
+            prompts: window.promptManager ? window.promptManager.getAllPrompts() : [],
+            categories: window.categoryManager ? window.categoryManager.getAllCategories() : {},
+            timestamp: new Date().toISOString()
+        };
+
+        navigator.serviceWorker.controller.postMessage({
+            type: 'CACHE_PROMPT_DATA',
+            payload: promptData
+        });
+    }
+}
+
+// Add animation disable CSS for performance
+const animationDisabledCSS = `
+.animations-disabled * {
+    animation-duration: 0s !important;
+    animation-delay: 0s !important;
+    transition-duration: 0s !important;
+    transition-delay: 0s !important;
+}
+`;
+
+// Inject CSS for animation controls
+const styleSheet = document.createElement('style');
+styleSheet.textContent = animationDisabledCSS;
+document.head.appendChild(styleSheet);
+
 // Export functions for global access if needed
 window.editPrompt = editPrompt;
 window.usePrompt = usePrompt;
