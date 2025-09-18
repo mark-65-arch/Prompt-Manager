@@ -199,7 +199,16 @@ class PromptManager {
     // Load prompts from localStorage
     loadPrompts() {
         const stored = localStorage.getItem('aiPrompts');
-        return stored ? JSON.parse(stored) : [];
+        const prompts = stored ? JSON.parse(stored) : [];
+        
+        // Add backward compatibility for prompts without usageHistory
+        prompts.forEach(prompt => {
+            if (!prompt.usageHistory) {
+                prompt.usageHistory = [];
+            }
+        });
+        
+        return prompts;
     }
 
     // Save prompts to localStorage
@@ -220,6 +229,7 @@ class PromptManager {
                     aiModel: 'ChatGPT',
                     tags: ['welcome', 'intro'],
                     starRating: 5,
+                    usageHistory: [],
                     createdAt: new Date().toISOString(),
                     updatedAt: new Date().toISOString()
                 },
@@ -232,6 +242,7 @@ class PromptManager {
                     aiModel: 'Claude',
                     tags: ['code-review', 'debugging', 'best-practices'],
                     starRating: 4,
+                    usageHistory: [],
                     createdAt: new Date().toISOString(),
                     updatedAt: new Date().toISOString()
                 },
@@ -244,6 +255,7 @@ class PromptManager {
                     aiModel: 'ChatGPT',
                     tags: ['creative-writing', 'story-ideas', 'fiction'],
                     starRating: 5,
+                    usageHistory: [],
                     createdAt: new Date().toISOString(),
                     updatedAt: new Date().toISOString()
                 }
@@ -263,6 +275,7 @@ class PromptManager {
             aiModel: promptData.aiModel,
             tags: promptData.tags || [],
             starRating: parseInt(promptData.starRating) || 0,
+            usageHistory: [],
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
         };
@@ -355,6 +368,72 @@ class PromptManager {
     getAllPrompts() {
         return this.prompts;
     }
+
+    // Log usage for a prompt
+    logUsage(promptId, usageData) {
+        const prompt = this.getPrompt(promptId);
+        if (prompt) {
+            if (!prompt.usageHistory) {
+                prompt.usageHistory = [];
+            }
+            
+            const usageEntry = {
+                id: this.generateUsageId(),
+                useCase: usageData.useCase,
+                outcomeNotes: usageData.outcomeNotes,
+                effectivenessRating: parseInt(usageData.effectivenessRating) || 0,
+                usedAt: new Date().toISOString()
+            };
+            
+            prompt.usageHistory.push(usageEntry);
+            prompt.updatedAt = new Date().toISOString();
+            this.savePrompts();
+            
+            return usageEntry;
+        }
+        return null;
+    }
+
+    // Update prompt rating
+    updatePromptRating(promptId, rating) {
+        const prompt = this.getPrompt(promptId);
+        if (prompt) {
+            prompt.starRating = parseInt(rating) || 0;
+            prompt.updatedAt = new Date().toISOString();
+            this.savePrompts();
+            
+            // Refresh search manager if available
+            if (window.searchFilterManager) {
+                window.searchFilterManager.refreshData();
+            }
+            
+            return prompt;
+        }
+        return null;
+    }
+
+    // Get usage statistics for a prompt
+    getUsageStats(promptId) {
+        const prompt = this.getPrompt(promptId);
+        if (prompt && prompt.usageHistory) {
+            const usageCount = prompt.usageHistory.length;
+            const avgEffectiveness = usageCount > 0 
+                ? prompt.usageHistory.reduce((sum, usage) => sum + usage.effectivenessRating, 0) / usageCount 
+                : 0;
+            
+            return {
+                usageCount,
+                avgEffectiveness: Math.round(avgEffectiveness * 10) / 10,
+                lastUsed: usageCount > 0 ? prompt.usageHistory[usageCount - 1].usedAt : null
+            };
+        }
+        return { usageCount: 0, avgEffectiveness: 0, lastUsed: null };
+    }
+
+    // Generate unique usage ID
+    generateUsageId() {
+        return 'usage_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    }
 }
 
 // Global manager instances
@@ -388,6 +467,9 @@ function initializeApp() {
     
     // Prompt modal event listeners
     initializePromptModal();
+    
+    // Usage modal event listeners
+    initializeUsageModal();
     
     // Ensure initial display shows all prompts
     if (searchFilterManager) {
@@ -1544,20 +1626,74 @@ function createPromptCard(prompt) {
     dateSpan.className = 'prompt-date';
     dateSpan.textContent = createdDate;
     
-    // Add star rating display
-    const rating = parseInt(prompt.starRating) || 0;
-    if (rating > 0) {
-        const ratingSpan = document.createElement('span');
-        ratingSpan.className = 'prompt-rating';
-        ratingSpan.textContent = '⭐'.repeat(rating);
-        ratingSpan.title = `${rating} star${rating !== 1 ? 's' : ''}`;
-        meta.appendChild(ratingSpan);
-    }
-
     meta.appendChild(modelBadge);
     meta.appendChild(dateSpan);
     header.appendChild(title);
     header.appendChild(meta);
+
+    // Add interactive star rating
+    const ratingDiv = document.createElement('div');
+    ratingDiv.className = 'prompt-rating-interactive';
+    
+    const starRating = document.createElement('div');
+    starRating.className = 'star-rating';
+    starRating.dataset.promptId = prompt.id;
+    
+    for (let i = 1; i <= 5; i++) {
+        const star = document.createElement('span');
+        star.className = 'star';
+        star.dataset.rating = i;
+        star.textContent = '⭐';
+        if (i <= (parseInt(prompt.starRating) || 0)) {
+            star.classList.add('active');
+        }
+        star.addEventListener('click', () => updatePromptRating(prompt.id, i));
+        star.addEventListener('mouseenter', () => highlightStars(starRating, i));
+        star.addEventListener('mouseleave', () => resetStars(starRating, prompt.starRating));
+        starRating.appendChild(star);
+    }
+
+    const ratingText = document.createElement('span');
+    ratingText.className = 'rating-text';
+    const currentRating = parseInt(prompt.starRating) || 0;
+    ratingText.textContent = currentRating > 0 ? `${currentRating} star${currentRating !== 1 ? 's' : ''}` : 'No rating';
+    
+    ratingDiv.appendChild(starRating);
+    ratingDiv.appendChild(ratingText);
+
+    // Add usage statistics
+    const usageStats = promptManager.getUsageStats(prompt.id);
+    if (usageStats.usageCount > 0) {
+        const usageStatsDiv = document.createElement('div');
+        usageStatsDiv.className = 'usage-stats';
+
+        const usageCountStat = document.createElement('div');
+        usageCountStat.className = 'usage-stat';
+        usageCountStat.innerHTML = `
+            <span class="usage-stat-value">${usageStats.usageCount}</span>
+            <span class="usage-stat-label">Uses</span>
+        `;
+
+        const avgEffectiveness = document.createElement('div');
+        avgEffectiveness.className = 'usage-stat';
+        avgEffectiveness.innerHTML = `
+            <span class="usage-stat-value">${usageStats.avgEffectiveness}⭐</span>
+            <span class="usage-stat-label">Avg Rating</span>
+        `;
+
+        usageStatsDiv.appendChild(usageCountStat);
+        usageStatsDiv.appendChild(avgEffectiveness);
+        
+        if (usageStats.lastUsed) {
+            const lastUsedDiv = document.createElement('div');
+            lastUsedDiv.className = 'usage-history-summary';
+            const lastUsedDate = new Date(usageStats.lastUsed).toLocaleDateString();
+            lastUsedDiv.innerHTML = `<span class="last-used">Last used: ${lastUsedDate}</span>`;
+            ratingDiv.appendChild(lastUsedDiv);
+        }
+        
+        ratingDiv.appendChild(usageStatsDiv);
+    }
     
     // Create content section safely
     const contentDiv = document.createElement('div');
@@ -1624,13 +1760,21 @@ function createPromptCard(prompt) {
     copyBtn.title = 'Copy to Clipboard';
     copyBtn.onclick = () => copyPrompt(prompt.id);
     copyBtn.innerHTML = '<span class="btn-icon">📋</span> Copy';
+
+    const logUsageBtn = document.createElement('button');
+    logUsageBtn.className = 'log-usage-btn';
+    logUsageBtn.title = 'Log Usage';
+    logUsageBtn.onclick = () => showUsageModal(prompt.id);
+    logUsageBtn.innerHTML = '<span class="btn-icon">📊</span> Log Usage';
     
     actionsDiv.appendChild(editBtn);
     actionsDiv.appendChild(deleteBtn);
     actionsDiv.appendChild(copyBtn);
+    actionsDiv.appendChild(logUsageBtn);
     
     // Assemble the card
     card.appendChild(header);
+    card.appendChild(ratingDiv);
     card.appendChild(contentDiv);
     if (prompt.tags.length > 0) {
         card.appendChild(tagsDiv);
@@ -2211,6 +2355,231 @@ function copyToClipboardFallback(text, title) {
     }
     
     document.body.removeChild(textArea);
+}
+
+// Star Rating Functions
+function updatePromptRating(promptId, rating) {
+    promptManager.updatePromptRating(promptId, rating);
+    
+    // Update the visual star rating immediately
+    const starRating = document.querySelector(`[data-prompt-id="${promptId}"]`);
+    if (starRating) {
+        const stars = starRating.querySelectorAll('.star');
+        const ratingText = starRating.parentElement.querySelector('.rating-text');
+        
+        stars.forEach((star, index) => {
+            if (index < rating) {
+                star.classList.add('active');
+            } else {
+                star.classList.remove('active');
+            }
+        });
+        
+        ratingText.textContent = rating > 0 ? `${rating} star${rating !== 1 ? 's' : ''}` : 'No rating';
+    }
+    
+    // Refresh the entire display to ensure consistency
+    if (window.searchFilterManager) {
+        window.searchFilterManager.refreshData();
+        window.searchFilterManager.updateDisplay();
+    }
+}
+
+function highlightStars(starRating, rating) {
+    const stars = starRating.querySelectorAll('.star');
+    stars.forEach((star, index) => {
+        if (index < rating) {
+            star.classList.add('hover');
+        } else {
+            star.classList.remove('hover');
+        }
+    });
+}
+
+function resetStars(starRating, currentRating) {
+    const stars = starRating.querySelectorAll('.star');
+    stars.forEach((star, index) => {
+        star.classList.remove('hover');
+        if (index < (parseInt(currentRating) || 0)) {
+            star.classList.add('active');
+        } else {
+            star.classList.remove('active');
+        }
+    });
+}
+
+// Usage Modal Functions
+let currentUsagePromptId = null;
+
+function showUsageModal(promptId) {
+    const modal = document.getElementById('usageModal');
+    const modalOverlay = document.getElementById('modalOverlay');
+    const form = document.getElementById('usageForm');
+    
+    if (!modal || !modalOverlay) return;
+    
+    // Reset form
+    form.reset();
+    currentUsagePromptId = promptId;
+    
+    // Reset effectiveness rating
+    document.getElementById('effectivenessRating').value = '0';
+    document.getElementById('effectivenessRatingText').textContent = 'No rating';
+    const effectivenessStars = document.querySelectorAll('#effectivenessStars .star');
+    effectivenessStars.forEach(star => star.classList.remove('active'));
+    
+    // Show modal
+    modal.classList.add('show');
+    modalOverlay.classList.add('show');
+    document.body.style.overflow = 'hidden';
+    
+    // Focus on use case field
+    setTimeout(() => {
+        document.getElementById('useCase').focus();
+    }, 100);
+}
+
+function hideUsageModal() {
+    const modal = document.getElementById('usageModal');
+    const modalOverlay = document.getElementById('modalOverlay');
+    const form = document.getElementById('usageForm');
+    
+    modal.classList.remove('show');
+    modalOverlay.classList.remove('show');
+    document.body.style.overflow = '';
+    
+    // Reset form and modal state
+    if (form) {
+        form.reset();
+    }
+    
+    // Reset effectiveness rating display
+    document.getElementById('effectivenessRating').value = '0';
+    document.getElementById('effectivenessRatingText').textContent = 'No rating';
+    const effectivenessStars = document.querySelectorAll('#effectivenessStars .star');
+    effectivenessStars.forEach(star => {
+        star.classList.remove('active', 'hover');
+    });
+    
+    currentUsagePromptId = null;
+}
+
+function handleUsageFormSubmit(e) {
+    e.preventDefault();
+    
+    const usageData = {
+        useCase: document.getElementById('useCase').value.trim(),
+        outcomeNotes: document.getElementById('outcomeNotes').value.trim(),
+        effectivenessRating: document.getElementById('effectivenessRating').value
+    };
+    
+    // Validate required fields
+    if (!usageData.useCase) {
+        alert('Please enter a use case.');
+        return;
+    }
+    
+    if (!usageData.effectivenessRating || usageData.effectivenessRating === '0') {
+        alert('Please provide an effectiveness rating.');
+        return;
+    }
+    
+    try {
+        // Log the usage
+        promptManager.logUsage(currentUsagePromptId, usageData);
+        
+        // Hide modal and refresh display immediately
+        hideUsageModal();
+        
+        // Force complete refresh to show updated usage statistics
+        if (window.searchFilterManager) {
+            window.searchFilterManager.refreshData();
+            window.searchFilterManager.updateDisplay();
+        } else {
+            refreshCurrentCategoryDisplay();
+        }
+        
+        // Show success message
+        alert('Usage logged successfully!');
+        
+    } catch (error) {
+        console.error('Error logging usage:', error);
+        alert('Error logging usage. Please try again.');
+    }
+}
+
+// Initialize Usage Modal Event Listeners
+function initializeUsageModal() {
+    const usageModal = document.getElementById('usageModal');
+    const usageModalClose = document.getElementById('usageModalClose');
+    const usageCancelBtn = document.getElementById('usageCancelBtn');
+    const usageForm = document.getElementById('usageForm');
+    const effectivenessStars = document.querySelectorAll('#effectivenessStars .star');
+    
+    // Form submission
+    if (usageForm) {
+        usageForm.addEventListener('submit', handleUsageFormSubmit);
+    }
+    
+    // Close modal events
+    if (usageModalClose) {
+        usageModalClose.addEventListener('click', hideUsageModal);
+    }
+    
+    if (usageCancelBtn) {
+        usageCancelBtn.addEventListener('click', hideUsageModal);
+    }
+    
+    // Click outside modal to close
+    if (usageModal) {
+        usageModal.addEventListener('click', (e) => {
+            if (e.target === usageModal) {
+                hideUsageModal();
+            }
+        });
+    }
+    
+    // Effectiveness rating stars
+    effectivenessStars.forEach(star => {
+        star.addEventListener('click', function() {
+            const rating = this.dataset.rating;
+            document.getElementById('effectivenessRating').value = rating;
+            document.getElementById('effectivenessRatingText').textContent = `${rating} star${rating !== '1' ? 's' : ''}`;
+            
+            effectivenessStars.forEach((s, index) => {
+                if (index < rating) {
+                    s.classList.add('active');
+                } else {
+                    s.classList.remove('active');
+                }
+            });
+        });
+        
+        star.addEventListener('mouseenter', function() {
+            const rating = this.dataset.rating;
+            effectivenessStars.forEach((s, index) => {
+                if (index < rating) {
+                    s.classList.add('hover');
+                } else {
+                    s.classList.remove('hover');
+                }
+            });
+        });
+        
+        star.addEventListener('mouseleave', function() {
+            effectivenessStars.forEach(s => s.classList.remove('hover'));
+        });
+    });
+    
+    // Escape key handler for usage modal
+    document.addEventListener('keydown', (e) => {
+        if (e.key === 'Escape') {
+            const usageModal = document.getElementById('usageModal');
+            if (usageModal && usageModal.classList.contains('show')) {
+                hideUsageModal();
+            }
+        }
+    });
 }
 
 // Toggle Read More/Less functionality

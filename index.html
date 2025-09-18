@@ -241,6 +241,49 @@
         </div>
     </div>
 
+    <!-- Usage Log Modal -->
+    <div class="modal" id="usageModal">
+        <div class="modal-content">
+            <div class="modal-header">
+                <h3 class="modal-title" id="usageModalTitle">Log Usage</h3>
+                <button class="modal-close" id="usageModalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <form id="usageForm">
+                    <div class="form-group">
+                        <label for="useCase">Use Case</label>
+                        <input type="text" id="useCase" class="form-input" required placeholder="What did you use this prompt for?">
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="outcomeNotes">Outcome Notes</label>
+                        <textarea id="outcomeNotes" class="form-textarea" rows="4" placeholder="How did it work? What were the results?"></textarea>
+                    </div>
+                    
+                    <div class="form-group">
+                        <label for="effectivenessRating">Effectiveness Rating</label>
+                        <div class="effectiveness-rating">
+                            <div class="star-rating" id="effectivenessStars">
+                                <span class="star" data-rating="1">⭐</span>
+                                <span class="star" data-rating="2">⭐</span>
+                                <span class="star" data-rating="3">⭐</span>
+                                <span class="star" data-rating="4">⭐</span>
+                                <span class="star" data-rating="5">⭐</span>
+                            </div>
+                            <span class="rating-text" id="effectivenessRatingText">No rating</span>
+                        </div>
+                        <input type="hidden" id="effectivenessRating" value="0">
+                    </div>
+                    
+                    <div class="form-actions">
+                        <button type="button" class="btn-secondary" id="usageCancelBtn">Cancel</button>
+                        <button type="submit" class="btn-primary" id="usageSubmitBtn">Log Usage</button>
+                    </div>
+                </form>
+            </div>
+        </div>
+    </div>
+
     <!-- Modal Overlay -->
     <div class="modal-overlay" id="modalOverlay"></div>
 

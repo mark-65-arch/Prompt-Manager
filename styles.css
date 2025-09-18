@@ -981,6 +981,130 @@ body {
     z-index: 999;
 }
 
+/* Star Rating System */
+.star-rating {
+    display: flex;
+    gap: 0.125rem;
+    align-items: center;
+}
+
+.star {
+    font-size: 1.125rem;
+    cursor: pointer;
+    color: #d1d5db;
+    transition: color 0.2s ease;
+    user-select: none;
+}
+
+.star:hover,
+.star.active {
+    color: #fbbf24;
+}
+
+.star.hover {
+    color: #fbbf24;
+}
+
+.prompt-rating-interactive {
+    display: flex;
+    align-items: center;
+    gap: 0.5rem;
+    margin-bottom: 0.75rem;
+}
+
+.prompt-rating-interactive .star-rating {
+    margin-right: 0.5rem;
+}
+
+.rating-text {
+    font-size: 0.875rem;
+    color: #6b7280;
+    font-weight: 500;
+}
+
+/* Effectiveness Rating in Modal */
+.effectiveness-rating {
+    display: flex;
+    flex-direction: column;
+    gap: 0.5rem;
+}
+
+.effectiveness-rating .star-rating {
+    justify-content: flex-start;
+}
+
+.effectiveness-rating .rating-text {
+    font-size: 0.8125rem;
+    color: #374151;
+}
+
+/* Usage History Styles */
+.usage-stats {
+    display: flex;
+    gap: 1rem;
+    align-items: center;
+    margin-bottom: 0.75rem;
+    padding: 0.5rem;
+    background-color: #f8fafc;
+    border-radius: 0.375rem;
+    border: 1px solid #e5e7eb;
+}
+
+.usage-stat {
+    display: flex;
+    flex-direction: column;
+    align-items: center;
+    gap: 0.125rem;
+}
+
+.usage-stat-value {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #374151;
+}
+
+.usage-stat-label {
+    font-size: 0.6875rem;
+    color: #6b7280;
+    text-transform: uppercase;
+    letter-spacing: 0.025em;
+}
+
+.log-usage-btn {
+    background: linear-gradient(135deg, #10b981 0%, #059669 100%);
+    color: white;
+    border: none;
+    padding: 0.375rem 0.75rem;
+    border-radius: 0.375rem;
+    cursor: pointer;
+    transition: all 0.2s ease;
+    font-size: 0.8125rem;
+    font-weight: 500;
+}
+
+.log-usage-btn:hover {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 12px rgba(16, 185, 129, 0.25);
+}
+
+.usage-history-summary {
+    display: flex;
+    justify-content: space-between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+    font-size: 0.8125rem;
+    color: #6b7280;
+}
+
+.last-used {
+    font-style: italic;
+}
+
+/* Modal Enhancements for Usage Modal */
+.modal .star-rating .star {
+    font-size: 1.5rem;
+}
+
 /* Mobile Responsive */
 @media (max-width: 768px) {
     .app-container {
