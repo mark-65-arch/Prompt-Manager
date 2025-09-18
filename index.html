@@ -42,9 +42,70 @@
                 <button class="add-prompt-btn">+ Add New Prompt</button>
             </div>
             
-            <div class="search-bar">
-                <input type="text" placeholder="Search prompts..." class="search-input">
-                <button class="search-btn">Search</button>
+            <div class="search-filter-section">
+                <div class="search-bar">
+                    <input type="text" placeholder="Search prompts by title, content, or tags..." class="search-input" id="searchInput">
+                    <button class="search-btn">Search</button>
+                </div>
+
+                <div class="filter-controls">
+                    <div class="filter-group">
+                        <label for="aiModelFilter">AI Model</label>
+                        <select id="aiModelFilter" class="filter-select">
+                            <option value="">All Models</option>
+                        </select>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label for="categoryFilter">Category</label>
+                        <select id="categoryFilter" class="filter-select">
+                            <option value="">All Categories</option>
+                        </select>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label for="starRatingFilter">Star Rating</label>
+                        <select id="starRatingFilter" class="filter-select">
+                            <option value="">All Ratings</option>
+                            <option value="5">⭐⭐⭐⭐⭐ (5 stars)</option>
+                            <option value="4">⭐⭐⭐⭐ (4+ stars)</option>
+                            <option value="3">⭐⭐⭐ (3+ stars)</option>
+                            <option value="2">⭐⭐ (2+ stars)</option>
+                            <option value="1">⭐ (1+ stars)</option>
+                        </select>
+                    </div>
+                    
+                    <div class="filter-group">
+                        <label for="dateRangeFilter">Date Range</label>
+                        <select id="dateRangeFilter" class="filter-select">
+                            <option value="">All Time</option>
+                            <option value="today">Today</option>
+                            <option value="week">This Week</option>
+                            <option value="month">This Month</option>
+                            <option value="year">This Year</option>
+                        </select>
+                    </div>
+                    
+                    <button id="clearFiltersBtn" class="clear-filters-btn">Clear All Filters</button>
+                </div>
+
+                <div class="tag-cloud-section">
+                    <h3 class="tag-cloud-title">Popular Tags</h3>
+                    <div class="tag-cloud" id="tagCloud">
+                        <!-- Tags will be dynamically populated here -->
+                    </div>
+                </div>
+
+                <div class="active-filters-section" id="activeFiltersSection" style="display: none;">
+                    <h4 class="active-filters-title">Active Filters:</h4>
+                    <div class="active-filters" id="activeFilters">
+                        <!-- Active filter chips will be dynamically populated here -->
+                    </div>
+                </div>
+
+                <div class="results-info">
+                    <span class="results-count" id="resultsCount">0 prompts</span>
+                </div>
             </div>
 
             <div class="prompts-grid">
@@ -136,19 +197,33 @@
                         </div>
                     </div>
                     
-                    <div class="form-group">
-                        <label for="promptAiModel">AI Model</label>
-                        <select id="promptAiModel" class="form-select" required>
-                            <option value="">Select AI model...</option>
-                            <option value="ChatGPT">ChatGPT (OpenAI)</option>
-                            <option value="Claude">Claude (Anthropic)</option>
-                            <option value="Gemini">Gemini (Google)</option>
-                            <option value="Llama">Llama (Meta)</option>
-                            <option value="Mistral">Mistral AI</option>
-                            <option value="Perplexity">Perplexity</option>
-                            <option value="Cohere">Cohere</option>
-                            <option value="Other">Other</option>
-                        </select>
+                    <div class="form-row">
+                        <div class="form-group">
+                            <label for="promptAiModel">AI Model</label>
+                            <select id="promptAiModel" class="form-select" required>
+                                <option value="">Select AI model...</option>
+                                <option value="ChatGPT">ChatGPT (OpenAI)</option>
+                                <option value="Claude">Claude (Anthropic)</option>
+                                <option value="Gemini">Gemini (Google)</option>
+                                <option value="Llama">Llama (Meta)</option>
+                                <option value="Mistral">Mistral AI</option>
+                                <option value="Perplexity">Perplexity</option>
+                                <option value="Cohere">Cohere</option>
+                                <option value="Other">Other</option>
+                            </select>
+                        </div>
+                        
+                        <div class="form-group">
+                            <label for="promptStarRating">Star Rating</label>
+                            <select id="promptStarRating" class="form-select">
+                                <option value="0">No rating</option>
+                                <option value="1">⭐ (1 star)</option>
+                                <option value="2">⭐⭐ (2 stars)</option>
+                                <option value="3">⭐⭐⭐ (3 stars)</option>
+                                <option value="4">⭐⭐⭐⭐ (4 stars)</option>
+                                <option value="5">⭐⭐⭐⭐⭐ (5 stars)</option>
+                            </select>
+                        </div>
                     </div>
                     
                     <div class="form-group">

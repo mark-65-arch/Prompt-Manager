@@ -219,6 +219,7 @@ class PromptManager {
                     subcategory: null,
                     aiModel: 'ChatGPT',
                     tags: ['welcome', 'intro'],
+                    starRating: 5,
                     createdAt: new Date().toISOString(),
                     updatedAt: new Date().toISOString()
                 },
@@ -230,6 +231,7 @@ class PromptManager {
                     subcategory: 'debugging',
                     aiModel: 'Claude',
                     tags: ['code-review', 'debugging', 'best-practices'],
+                    starRating: 4,
                     createdAt: new Date().toISOString(),
                     updatedAt: new Date().toISOString()
                 },
@@ -241,6 +243,7 @@ class PromptManager {
                     subcategory: 'blog-posts',
                     aiModel: 'ChatGPT',
                     tags: ['creative-writing', 'story-ideas', 'fiction'],
+                    starRating: 5,
                     createdAt: new Date().toISOString(),
                     updatedAt: new Date().toISOString()
                 }
@@ -259,12 +262,19 @@ class PromptManager {
             subcategory: promptData.subcategory || null,
             aiModel: promptData.aiModel,
             tags: promptData.tags || [],
+            starRating: parseInt(promptData.starRating) || 0,
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
         };
 
         this.prompts.push(prompt);
         this.savePrompts();
+        
+        // Refresh search manager if available
+        if (window.searchFilterManager) {
+            window.searchFilterManager.refreshData();
+        }
+        
         return prompt;
     }
 
@@ -275,9 +285,16 @@ class PromptManager {
             this.prompts[index] = {
                 ...this.prompts[index],
                 ...promptData,
+                starRating: parseInt(promptData.starRating) || this.prompts[index].starRating || 0,
                 updatedAt: new Date().toISOString()
             };
             this.savePrompts();
+            
+            // Refresh search manager if available
+            if (window.searchFilterManager) {
+                window.searchFilterManager.refreshData();
+            }
+            
             return this.prompts[index];
         }
         return null;
@@ -289,6 +306,12 @@ class PromptManager {
         if (index !== -1) {
             this.prompts.splice(index, 1);
             this.savePrompts();
+            
+            // Refresh search manager if available
+            if (window.searchFilterManager) {
+                window.searchFilterManager.refreshData();
+            }
+            
             return true;
         }
         return false;
@@ -357,7 +380,7 @@ function initializeApp() {
     // Category functionality
     initializeCategoryNavigation();
     
-    // Search functionality
+    // Initialize search and filter functionality first
     initializeSearch();
     
     // Button event listeners
@@ -365,6 +388,11 @@ function initializeApp() {
     
     // Prompt modal event listeners
     initializePromptModal();
+    
+    // Ensure initial display shows all prompts
+    if (searchFilterManager) {
+        searchFilterManager.updateDisplay();
+    }
 }
 
 // Mobile Menu Functionality
@@ -651,31 +679,53 @@ function initializeCategoryNavigation() {
 }
 
 function updatePromptsDisplay(categoryName) {
+    // Use SearchFilterManager if available, otherwise fallback to old method
+    if (searchFilterManager) {
+        // Clear category filter and apply category-based filtering
+        searchFilterManager.activeFilters.category = '';
+        
+        // Apply category filtering based on active selection
+        const activeCategory = document.querySelector('.category-main.active');
+        const activeSubcategory = document.querySelector('.subcategory-item.active');
+        
+        if (activeSubcategory) {
+            const parentId = activeSubcategory.dataset.parentId;
+            const categoryObj = categoryManager.getCategory(parentId);
+            if (categoryObj) {
+                searchFilterManager.activeFilters.category = categoryObj.name;
+            }
+        } else if (activeCategory && activeCategory.dataset.categoryId !== 'all') {
+            const categoryId = activeCategory.dataset.categoryId;
+            const categoryObj = categoryManager.getCategory(categoryId);
+            if (categoryObj) {
+                searchFilterManager.activeFilters.category = categoryObj.name;
+            }
+        }
+        
+        searchFilterManager.applyFilters();
+        return;
+    }
+    
+    // Fallback to old method
     const promptsGrid = document.querySelector('.prompts-grid');
     if (!promptsGrid) return;
     
-    // Clear current prompts
     promptsGrid.innerHTML = '';
     
-    // Get real prompts based on category
     let prompts = [];
     const activeCategory = document.querySelector('.category-main.active');
     const activeSubcategory = document.querySelector('.subcategory-item.active');
     
     if (activeSubcategory) {
-        // Get prompts for subcategory
         const subcategoryId = activeSubcategory.dataset.subcategoryId;
         const parentId = activeSubcategory.dataset.parentId;
         prompts = promptManager.getPromptsByCategory(parentId, subcategoryId);
     } else if (activeCategory) {
-        // Get prompts for main category
         const categoryId = activeCategory.dataset.categoryId;
         prompts = promptManager.getPromptsByCategory(categoryId);
     }
     
-    // Create and append prompt cards
     if (prompts.length === 0) {
-        // Show empty state
         const emptyState = document.createElement('div');
         emptyState.className = 'empty-state';
         emptyState.innerHTML = `
@@ -694,72 +744,506 @@ function updatePromptsDisplay(categoryName) {
     }
 }
 
-// Update search functionality to use real data
-function initializeSearch() {
-    const searchInput = document.querySelector('.search-input');
-    const searchBtn = document.querySelector('.search-btn');
-    
-    if (!searchInput || !searchBtn) return;
-    
-    const performSearch = () => {
-        const query = searchInput.value.trim();
-        if (query.length === 0) {
-            // Show current category prompts when search is cleared
-            refreshCurrentCategoryDisplay();
-            return;
-        }
+// Enhanced Search and Filter Management
+class SearchFilterManager {
+    constructor() {
+        this.activeFilters = {
+            search: '',
+            aiModel: '',
+            category: '',
+            starRating: '',
+            dateRange: '',
+            tags: []
+        };
+        this.allPrompts = [];
+        this.filteredPrompts = [];
+    }
+
+    // Initialize all search and filter functionality
+    init() {
+        this.loadPrompts();
+        this.setupSearchInput();
+        this.setupFilterDropdowns();
+        this.setupTagCloud();
+        this.setupClearFilters();
+        this.populateFilterOptions();
+        this.updateDisplay();
+    }
+
+    // Load prompts from PromptManager
+    loadPrompts() {
+        if (!promptManager) return;
         
-        const results = promptManager.searchPrompts(query);
-        displaySearchResults(results, query);
-    };
-    
-    // Search on button click
-    searchBtn.addEventListener('click', performSearch);
-    
-    // Search on Enter key
-    searchInput.addEventListener('keypress', (e) => {
-        if (e.key === 'Enter') {
-            performSearch();
+        this.allPrompts = promptManager.getAllPrompts();
+        // Normalize star ratings for existing prompts that might not have them
+        this.allPrompts.forEach(prompt => {
+            if (prompt.starRating === undefined || prompt.starRating === null) {
+                prompt.starRating = 0;
+            }
+        });
+        this.filteredPrompts = [...this.allPrompts];
+    }
+
+    // Refresh data when prompts are updated
+    refreshData() {
+        this.loadPrompts();
+        this.populateFilterOptions();
+        this.applyFilters();
+    }
+
+    // Setup real-time search input
+    setupSearchInput() {
+        const searchInput = document.getElementById('searchInput');
+        const searchBtn = document.querySelector('.search-btn');
+        
+        if (!searchInput) return;
+
+        // Real-time search with debounce
+        const debouncedSearch = debounce(() => {
+            this.activeFilters.search = searchInput.value.trim();
+            this.applyFilters();
+        }, 300);
+
+        searchInput.addEventListener('input', debouncedSearch);
+        
+        // Search on button click
+        if (searchBtn) {
+            searchBtn.addEventListener('click', () => {
+                this.activeFilters.search = searchInput.value.trim();
+                this.applyFilters();
+            });
         }
-    });
-    
-    // Clear search when input is empty
-    searchInput.addEventListener('input', (e) => {
-        if (e.target.value.trim() === '') {
-            refreshCurrentCategoryDisplay();
+
+        // Search on Enter key
+        searchInput.addEventListener('keypress', (e) => {
+            if (e.key === 'Enter') {
+                this.activeFilters.search = searchInput.value.trim();
+                this.applyFilters();
+            }
+        });
+    }
+
+    // Setup filter dropdown controls
+    setupFilterDropdowns() {
+        const aiModelFilter = document.getElementById('aiModelFilter');
+        const categoryFilter = document.getElementById('categoryFilter');
+        const starRatingFilter = document.getElementById('starRatingFilter');
+        const dateRangeFilter = document.getElementById('dateRangeFilter');
+
+        if (aiModelFilter) {
+            aiModelFilter.addEventListener('change', (e) => {
+                this.activeFilters.aiModel = e.target.value;
+                this.applyFilters();
+            });
         }
-    });
+
+        if (categoryFilter) {
+            categoryFilter.addEventListener('change', (e) => {
+                this.activeFilters.category = e.target.value;
+                this.applyFilters();
+            });
+        }
+
+        if (starRatingFilter) {
+            starRatingFilter.addEventListener('change', (e) => {
+                this.activeFilters.starRating = e.target.value;
+                this.applyFilters();
+            });
+        }
+
+        if (dateRangeFilter) {
+            dateRangeFilter.addEventListener('change', (e) => {
+                this.activeFilters.dateRange = e.target.value;
+                this.applyFilters();
+            });
+        }
+    }
+
+    // Setup tag cloud functionality
+    setupTagCloud() {
+        this.renderTagCloud();
+    }
+
+    // Setup clear filters button
+    setupClearFilters() {
+        const clearBtn = document.getElementById('clearFiltersBtn');
+        if (clearBtn) {
+            clearBtn.addEventListener('click', () => {
+                this.clearAllFilters();
+            });
+        }
+    }
+
+    // Populate filter dropdown options
+    populateFilterOptions() {
+        if (!promptManager) return;
+        
+        this.allPrompts = promptManager.getAllPrompts();
+        
+        // Populate AI Model filter
+        const aiModels = [...new Set(this.allPrompts.map(p => p.aiModel).filter(Boolean))];
+        this.populateSelect('aiModelFilter', aiModels);
+
+        // Populate Category filter
+        if (categoryManager) {
+            const categories = categoryManager.getAllCategories();
+            const categoryOptions = Object.values(categories)
+                .filter(cat => cat.id !== 'all')
+                .map(cat => cat.name);
+            this.populateSelect('categoryFilter', categoryOptions);
+        }
+    }
+
+    // Helper function to populate select options
+    populateSelect(selectId, options) {
+        const select = document.getElementById(selectId);
+        if (!select) return;
+
+        // Keep the first option (All ...)
+        const firstOption = select.querySelector('option');
+        select.innerHTML = '';
+        if (firstOption) select.appendChild(firstOption);
+
+        options.forEach(option => {
+            const optionElement = document.createElement('option');
+            optionElement.value = option;
+            optionElement.textContent = option;
+            select.appendChild(optionElement);
+        });
+    }
+
+    // Apply all active filters
+    applyFilters() {
+        this.loadPrompts(); // Ensure we have the latest data
+        this.filteredPrompts = this.allPrompts.filter(prompt => {
+            // Search filter
+            if (this.activeFilters.search) {
+                const searchLower = this.activeFilters.search.toLowerCase();
+                const matchesSearch = 
+                    prompt.title.toLowerCase().includes(searchLower) ||
+                    prompt.content.toLowerCase().includes(searchLower) ||
+                    prompt.tags.some(tag => tag.toLowerCase().includes(searchLower));
+                if (!matchesSearch) return false;
+            }
+
+            // AI Model filter
+            if (this.activeFilters.aiModel && prompt.aiModel !== this.activeFilters.aiModel) {
+                return false;
+            }
+
+            // Category filter
+            if (this.activeFilters.category) {
+                const categoryName = this.getCategoryName(prompt.category);
+                if (categoryName !== this.activeFilters.category) return false;
+            }
+
+            // Star rating filter
+            if (this.activeFilters.starRating) {
+                const rating = prompt.starRating || 0;
+                const minRating = parseInt(this.activeFilters.starRating);
+                if (rating < minRating) return false;
+            }
+
+            // Date range filter
+            if (this.activeFilters.dateRange) {
+                if (!this.isInDateRange(prompt.createdAt, this.activeFilters.dateRange)) {
+                    return false;
+                }
+            }
+
+            // Tag filters
+            if (this.activeFilters.tags.length > 0) {
+                const hasMatchingTag = this.activeFilters.tags.some(filterTag =>
+                    prompt.tags.some(promptTag => promptTag.toLowerCase() === filterTag.toLowerCase())
+                );
+                if (!hasMatchingTag) return false;
+            }
+
+            return true;
+        });
+
+        this.updateDisplay();
+    }
+
+    // Get category name by ID
+    getCategoryName(categoryId) {
+        const categories = categoryManager.getAllCategories();
+        return categories[categoryId]?.name || '';
+    }
+
+    // Check if date is in specified range
+    isInDateRange(dateString, range) {
+        const date = new Date(dateString);
+        const now = new Date();
+        
+        switch (range) {
+            case 'today':
+                return date.toDateString() === now.toDateString();
+            case 'week':
+                const weekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
+                return date >= weekAgo;
+            case 'month':
+                const monthAgo = new Date(now.getFullYear(), now.getMonth() - 1, now.getDate());
+                return date >= monthAgo;
+            case 'year':
+                const yearAgo = new Date(now.getFullYear() - 1, now.getMonth(), now.getDate());
+                return date >= yearAgo;
+            default:
+                return true;
+        }
+    }
+
+    // Render tag cloud
+    renderTagCloud() {
+        const tagCloudContainer = document.getElementById('tagCloud');
+        if (!tagCloudContainer) return;
+
+        const allPrompts = promptManager.getAllPrompts();
+        const tagCounts = {};
+
+        // Count tag occurrences
+        allPrompts.forEach(prompt => {
+            prompt.tags.forEach(tag => {
+                tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+            });
+        });
+
+        // Sort tags by count (descending)
+        const sortedTags = Object.entries(tagCounts)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 20); // Show top 20 tags
+
+        tagCloudContainer.innerHTML = '';
+
+        sortedTags.forEach(([tag, count]) => {
+            const tagElement = document.createElement('span');
+            tagElement.className = 'tag-cloud-item';
+            tagElement.innerHTML = `${tag} <span class="tag-count">${count}</span>`;
+            
+            // Check if tag is active
+            if (this.activeFilters.tags.includes(tag)) {
+                tagElement.classList.add('active');
+            }
+
+            tagElement.addEventListener('click', () => {
+                this.toggleTagFilter(tag);
+            });
+
+            tagCloudContainer.appendChild(tagElement);
+        });
+    }
+
+    // Toggle tag filter
+    toggleTagFilter(tag) {
+        const index = this.activeFilters.tags.indexOf(tag);
+        if (index > -1) {
+            this.activeFilters.tags.splice(index, 1);
+        } else {
+            this.activeFilters.tags.push(tag);
+        }
+        this.applyFilters();
+    }
+
+    // Update display with filtered results
+    updateDisplay() {
+        this.renderPrompts();
+        this.updateResultsCount();
+        this.updateActiveFilters();
+        this.renderTagCloud();
+    }
+
+    // Render filtered prompts
+    renderPrompts() {
+        const promptsGrid = document.querySelector('.prompts-grid');
+        if (!promptsGrid) return;
+
+        promptsGrid.innerHTML = '';
+
+        if (this.filteredPrompts.length === 0) {
+            const emptyState = document.createElement('div');
+            emptyState.className = 'empty-state';
+            emptyState.innerHTML = `
+                <div class="empty-state-content">
+                    <h3>No prompts found</h3>
+                    <p>Try adjusting your search or filters, or add a new prompt.</p>
+                    <button class="btn-primary" onclick="addNewPrompt()">Add New Prompt</button>
+                </div>
+            `;
+            promptsGrid.appendChild(emptyState);
+        } else {
+            this.filteredPrompts.forEach(prompt => {
+                const promptCard = createPromptCard(prompt);
+                promptsGrid.appendChild(promptCard);
+            });
+        }
+    }
+
+    // Update results count
+    updateResultsCount() {
+        const resultsCount = document.getElementById('resultsCount');
+        if (resultsCount) {
+            const count = this.filteredPrompts.length;
+            resultsCount.textContent = `${count} prompt${count !== 1 ? 's' : ''}`;
+        }
+
+        // Update content title
+        const contentTitle = document.querySelector('.content-title');
+        if (contentTitle) {
+            if (this.hasActiveFilters()) {
+                contentTitle.textContent = 'Filtered Results';
+            } else {
+                contentTitle.textContent = 'All Prompts';
+            }
+        }
+    }
+
+    // Update active filters display
+    updateActiveFilters() {
+        const activeFiltersSection = document.getElementById('activeFiltersSection');
+        const activeFiltersContainer = document.getElementById('activeFilters');
+        
+        if (!activeFiltersSection || !activeFiltersContainer) return;
+
+        const hasFilters = this.hasActiveFilters();
+        activeFiltersSection.style.display = hasFilters ? 'block' : 'none';
+
+        if (!hasFilters) return;
+
+        activeFiltersContainer.innerHTML = '';
+
+        // Add search filter chip
+        if (this.activeFilters.search) {
+            this.addFilterChip('Search', this.activeFilters.search, () => {
+                document.getElementById('searchInput').value = '';
+                this.activeFilters.search = '';
+                this.applyFilters();
+            });
+        }
+
+        // Add AI model filter chip
+        if (this.activeFilters.aiModel) {
+            this.addFilterChip('AI Model', this.activeFilters.aiModel, () => {
+                document.getElementById('aiModelFilter').value = '';
+                this.activeFilters.aiModel = '';
+                this.applyFilters();
+            });
+        }
+
+        // Add category filter chip
+        if (this.activeFilters.category) {
+            this.addFilterChip('Category', this.activeFilters.category, () => {
+                document.getElementById('categoryFilter').value = '';
+                this.activeFilters.category = '';
+                this.applyFilters();
+            });
+        }
+
+        // Add star rating filter chip
+        if (this.activeFilters.starRating) {
+            this.addFilterChip('Rating', `${this.activeFilters.starRating}+ stars`, () => {
+                document.getElementById('starRatingFilter').value = '';
+                this.activeFilters.starRating = '';
+                this.applyFilters();
+            });
+        }
+
+        // Add date range filter chip
+        if (this.activeFilters.dateRange) {
+            this.addFilterChip('Date', this.activeFilters.dateRange, () => {
+                document.getElementById('dateRangeFilter').value = '';
+                this.activeFilters.dateRange = '';
+                this.applyFilters();
+            });
+        }
+
+        // Add tag filter chips
+        this.activeFilters.tags.forEach(tag => {
+            this.addFilterChip('Tag', tag, () => {
+                this.toggleTagFilter(tag);
+            });
+        });
+    }
+
+    // Add filter chip element
+    addFilterChip(type, value, removeCallback) {
+        const activeFiltersContainer = document.getElementById('activeFilters');
+        if (!activeFiltersContainer) return;
+
+        const chip = document.createElement('div');
+        chip.className = 'filter-chip';
+        chip.innerHTML = `
+            <span>${type}: ${value}</span>
+            <button class="filter-chip-remove" title="Remove filter">×</button>
+        `;
+
+        const removeBtn = chip.querySelector('.filter-chip-remove');
+        removeBtn.addEventListener('click', removeCallback);
+
+        activeFiltersContainer.appendChild(chip);
+    }
+
+    // Check if any filters are active
+    hasActiveFilters() {
+        return !!(
+            this.activeFilters.search ||
+            this.activeFilters.aiModel ||
+            this.activeFilters.category ||
+            this.activeFilters.starRating ||
+            this.activeFilters.dateRange ||
+            this.activeFilters.tags.length > 0
+        );
+    }
+
+    // Clear all filters
+    clearAllFilters() {
+        // Clear filter values
+        this.activeFilters = {
+            search: '',
+            aiModel: '',
+            category: '',
+            starRating: '',
+            dateRange: '',
+            tags: []
+        };
+
+        // Clear form inputs
+        const searchInput = document.getElementById('searchInput');
+        if (searchInput) searchInput.value = '';
+
+        const selects = ['aiModelFilter', 'categoryFilter', 'starRatingFilter', 'dateRangeFilter'];
+        selects.forEach(selectId => {
+            const select = document.getElementById(selectId);
+            if (select) select.value = '';
+        });
+
+        // Apply filters (which will show all prompts)
+        this.applyFilters();
+    }
 }
 
-function displaySearchResults(results, query) {
-    const promptsGrid = document.querySelector('.prompts-grid');
-    const contentTitle = document.querySelector('.content-title');
-    
-    if (!promptsGrid || !contentTitle) return;
-    
-    // Update title to show search results
-    contentTitle.textContent = `Search Results for "${query}"`;
-    
-    // Clear current prompts
-    promptsGrid.innerHTML = '';
-    
-    if (results.length === 0) {
-        // Show no results state
-        const noResults = document.createElement('div');
-        noResults.className = 'empty-state';
-        noResults.innerHTML = `
-            <div class="empty-state-content">
-                <h3>No prompts found</h3>
-                <p>Try different keywords or create a new prompt.</p>
-                <button class="btn-primary" onclick="addNewPrompt()">Add New Prompt</button>
-            </div>
-        `;
-        promptsGrid.appendChild(noResults);
+// Global search filter manager instance
+let searchFilterManager;
+
+// Update search functionality to use real data
+function initializeSearch() {
+    // Create and initialize the search filter manager
+    if (typeof SearchFilterManager !== 'undefined') {
+        searchFilterManager = new SearchFilterManager();
+        window.searchFilterManager = searchFilterManager; // Make globally accessible
+        
+        // Initialize after a short delay to ensure DOM is ready
+        setTimeout(() => {
+            searchFilterManager.init();
+        }, 100);
     } else {
-        results.forEach(prompt => {
-            const promptCard = createPromptCard(prompt);
-            promptsGrid.appendChild(promptCard);
-        });
+        console.error('SearchFilterManager class not found');
+    }
+}
+
+// Legacy function - now handled by SearchFilterManager
+function displaySearchResults(results, query) {
+    if (searchFilterManager) {
+        searchFilterManager.updateDisplay();
     }
 }
 
@@ -1060,6 +1544,16 @@ function createPromptCard(prompt) {
     dateSpan.className = 'prompt-date';
     dateSpan.textContent = createdDate;
     
+    // Add star rating display
+    const rating = parseInt(prompt.starRating) || 0;
+    if (rating > 0) {
+        const ratingSpan = document.createElement('span');
+        ratingSpan.className = 'prompt-rating';
+        ratingSpan.textContent = '⭐'.repeat(rating);
+        ratingSpan.title = `${rating} star${rating !== 1 ? 's' : ''}`;
+        meta.appendChild(ratingSpan);
+    }
+
     meta.appendChild(modelBadge);
     meta.appendChild(dateSpan);
     header.appendChild(title);
@@ -1661,13 +2155,20 @@ function initializePromptModal() {
 
 // Refresh Current Category Display
 function refreshCurrentCategoryDisplay() {
-    const activeSub = document.querySelector('.subcategory-item.active');
-    const activeCat = document.querySelector('.category-main.active');
-    let name = 'All Prompts';
-    if (activeSub) name = activeSub.querySelector('.subcategory-button')?.textContent || name;
-    else if (activeCat) name = activeCat.querySelector('.category-button')?.textContent || name;
-    updateContentTitle(name);
-    updatePromptsDisplay(name);
+    // Update the search and filter system when category changes
+    if (searchFilterManager) {
+        searchFilterManager.populateFilterOptions();
+        searchFilterManager.applyFilters();
+    } else {
+        // Fallback for when search manager not ready
+        const activeSub = document.querySelector('.subcategory-item.active');
+        const activeCat = document.querySelector('.category-main.active');
+        let name = 'All Prompts';
+        if (activeSub) name = activeSub.querySelector('.subcategory-button')?.textContent || name;
+        else if (activeCat) name = activeCat.querySelector('.category-button')?.textContent || name;
+        updateContentTitle(name);
+        updatePromptsDisplay(name);
+    }
 }
 
 // Prompt Action Handlers
