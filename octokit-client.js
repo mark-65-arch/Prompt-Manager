@@ -12,12 +12,33 @@ function isReplitEnvironment() {
     );
 }
 
-// Get the Octokit class from global scope (UMD build)
-function getOctokitClass() {
-    if (typeof window !== 'undefined' && window.Octokit) {
-        return window.Octokit.Octokit || window.Octokit;
+// Get the Octokit class from global scope
+async function getOctokitClass() {
+    // Wait a bit for the CDN to load if needed
+    if (typeof window !== 'undefined' && !window.OctokitLibraryLoaded) {
+        await new Promise(resolve => setTimeout(resolve, 1000));
     }
-    throw new Error('Octokit not available from CDN');
+    
+    if (typeof window !== 'undefined') {
+        // Try different ways Octokit might be exposed
+        if (window.Octokit && typeof window.Octokit === 'function') {
+            return window.Octokit;
+        }
+        if (window.Octokit && window.Octokit.Octokit) {
+            return window.Octokit.Octokit;
+        }
+        if (window.OctokitRest && window.OctokitRest.Octokit) {
+            return window.OctokitRest.Octokit;
+        }
+        if (window.OctokitRest) {
+            return window.OctokitRest;
+        }
+    }
+    
+    console.error('Available globals:', typeof window !== 'undefined' ? Object.keys(window).filter(k => k.toLowerCase().includes('octokit')) : 'window not available');
+    
+    // For now, provide a helpful error message to users
+    throw new Error('GitHub backup feature requires internet connection and modern browser. Please try refreshing the page or use the manual export/import features in Data Management.');
 }
 
 // Get access token - prioritize user-provided token since server-side Replit integration requires backend
@@ -59,7 +80,7 @@ function getUserProvidedToken() {
 // Access tokens may expire, so create a fresh client each time.
 export async function getUncachableGitHubClient() {
     try {
-        const OctokitClass = getOctokitClass();
+        const OctokitClass = await getOctokitClass();
         const accessToken = await getAccessToken();
         
         if (!accessToken) {
@@ -79,7 +100,7 @@ export async function getUncachableGitHubClient() {
 // Check if GitHub is available in current environment
 export async function isGitHubAvailable() {
     try {
-        getOctokitClass(); // Check if Octokit is loaded
+        await getOctokitClass(); // Check if Octokit is loaded
         await getAccessToken(); // Check if we have a token
         return true;
     } catch (error) {
@@ -107,6 +128,13 @@ export async function getEnvironmentInfo() {
         requiresToken = false;
     } catch (error) {
         requiresToken = true;
+    }
+    
+    // Also check if Octokit is available
+    try {
+        await getOctokitClass();
+    } catch (error) {
+        hasOctokit = false;
     }
     
     console.log('Environment info:', { isReplit, hasOctokit, requiresToken });
