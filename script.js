@@ -651,6 +651,8 @@ class PromptManager {
 // Global manager instances
 let categoryManager;
 let promptManager;
+let bulkOperationsManager;
+let keyboardShortcutsManager;
 let currentVersionHistoryPromptId = null;
 let selectedVersions = [];
 
@@ -658,6 +660,12 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize managers
     categoryManager = new CategoryManager();
     promptManager = new PromptManager();
+    
+    // Initialize bulk operations manager
+    bulkOperationsManager = new BulkOperationsManager();
+    
+    // Initialize keyboard shortcuts manager
+    keyboardShortcutsManager = new KeyboardShortcutsManager();
     
     // Initialize the application
     initializeApp();
@@ -691,9 +699,15 @@ function initializeApp() {
     // Initialize data management system
     initializeDataManagement();
     
+    // Initialize bulk operations
+    initializeBulkOperations();
+    
+    // Log initialization success
+    console.log('All systems initialized successfully');
+    
     // Ensure initial display shows all prompts
-    if (searchFilterManager) {
-        searchFilterManager.updateDisplay();
+    if (window.searchFilterManager) {
+        window.searchFilterManager.updateDisplay();
     }
 }
 
@@ -1815,6 +1829,11 @@ function createPromptCard(prompt) {
     card.className = 'prompt-card';
     card.dataset.promptId = prompt.id;
     
+    // Add bulk selection support if in selection mode
+    if (bulkOperationsManager && bulkOperationsManager.isSelectionMode) {
+        bulkOperationsManager.updatePromptCardSelection(card);
+    }
+    
     // Format creation date
     const createdDate = new Date(prompt.createdAt).toLocaleDateString();
     
@@ -2302,6 +2321,32 @@ function initializeButtons() {
             }
         }
     });
+}
+
+// Bulk Operations Initialization
+function initializeBulkOperations() {
+    try {
+        const bulkSelectToggleBtn = document.getElementById('bulkSelectToggleBtn');
+        
+        if (bulkSelectToggleBtn) {
+            bulkSelectToggleBtn.addEventListener('click', () => {
+                if (bulkOperationsManager) {
+                    bulkOperationsManager.toggleSelectionMode();
+                    
+                    // Update button appearance
+                    const isSelectionMode = bulkOperationsManager.isSelectionMode;
+                    bulkSelectToggleBtn.textContent = isSelectionMode ? '✅ Exit Select' : '☑️ Select';
+                    bulkSelectToggleBtn.classList.toggle('active', isSelectionMode);
+                }
+            });
+            
+            console.log('Bulk operations initialized successfully');
+        } else {
+            console.warn('Bulk select toggle button not found');
+        }
+    } catch (error) {
+        console.error('Failed to initialize bulk operations:', error);
+    }
 }
 
 // Prompt Management Variables
@@ -4033,6 +4078,789 @@ function initializeDataManagement() {
     } catch (error) {
         console.error('Failed to initialize data management:', error);
         showNotification('Failed to initialize data management system', 'error');
+    }
+}
+
+// Bulk Operations Management
+class BulkOperationsManager {
+    constructor() {
+        this.selectedPrompts = new Set();
+        this.isSelectionMode = false;
+        this.toolbar = null;
+        this.init();
+    }
+
+    init() {
+        this.createBulkToolbar();
+        // Note: Keyboard shortcuts are handled by KeyboardShortcutsManager
+    }
+
+    createBulkToolbar() {
+        // Create bulk operations toolbar
+        const toolbar = document.createElement('div');
+        toolbar.id = 'bulkOperationsToolbar';
+        toolbar.className = 'bulk-operations-toolbar hidden';
+        
+        toolbar.innerHTML = `
+            <div class="bulk-toolbar-content">
+                <div class="bulk-toolbar-info">
+                    <span class="bulk-selection-count">0 selected</span>
+                    <button class="bulk-select-all-btn" id="bulkSelectAllBtn">Select All</button>
+                    <button class="bulk-clear-selection-btn" id="bulkClearSelectionBtn">Clear Selection</button>
+                </div>
+                <div class="bulk-toolbar-actions">
+                    <button class="btn-secondary bulk-action-btn" id="bulkMoveBtn">
+                        📁 Move
+                    </button>
+                    <button class="btn-secondary bulk-action-btn" id="bulkExportBtn">
+                        📤 Export
+                    </button>
+                    <button class="btn-danger bulk-action-btn" id="bulkDeleteBtn">
+                        🗑️ Delete
+                    </button>
+                </div>
+            </div>
+        `;
+
+        // Insert toolbar after search-filter-section
+        const searchSection = document.querySelector('.search-filter-section');
+        if (searchSection) {
+            searchSection.insertAdjacentElement('afterend', toolbar);
+            console.log('Bulk operations toolbar created and added to DOM');
+        } else {
+            console.warn('Search filter section not found - toolbar not added');
+        }
+
+        this.toolbar = toolbar;
+        this.setupToolbarEvents();
+    }
+
+    setupToolbarEvents() {
+        // Select All button
+        document.getElementById('bulkSelectAllBtn')?.addEventListener('click', () => {
+            this.selectAllVisiblePrompts();
+        });
+
+        // Clear Selection button
+        document.getElementById('bulkClearSelectionBtn')?.addEventListener('click', () => {
+            this.clearSelection();
+        });
+
+        // Bulk Move button
+        document.getElementById('bulkMoveBtn')?.addEventListener('click', () => {
+            this.showBulkMoveModal();
+        });
+
+        // Bulk Export button
+        document.getElementById('bulkExportBtn')?.addEventListener('click', () => {
+            this.exportSelectedPrompts();
+        });
+
+        // Bulk Delete button
+        document.getElementById('bulkDeleteBtn')?.addEventListener('click', () => {
+            this.showBulkDeleteConfirmation();
+        });
+    }
+
+    // Keyboard shortcuts are now handled by KeyboardShortcutsManager
+    // This prevents duplicate event listeners and conflicts
+
+    toggleSelectionMode() {
+        this.isSelectionMode = !this.isSelectionMode;
+        
+        // Add/remove selection mode class to body
+        document.body.classList.toggle('selection-mode', this.isSelectionMode);
+        
+        // Show/hide bulk toolbar
+        this.toolbar?.classList.toggle('hidden', !this.isSelectionMode || this.selectedPrompts.size === 0);
+        
+        // Update all prompt cards
+        this.updateAllPromptCards();
+        
+        if (!this.isSelectionMode) {
+            this.clearSelection();
+        }
+    }
+
+    updateAllPromptCards() {
+        const promptCards = document.querySelectorAll('.prompt-card');
+        promptCards.forEach(card => {
+            this.updatePromptCardSelection(card);
+        });
+        console.log(`Updated ${promptCards.length} prompt cards for selection mode: ${this.isSelectionMode}`);
+    }
+
+    updatePromptCardSelection(card) {
+        const checkbox = card.querySelector('.bulk-selection-checkbox');
+        const promptId = card.dataset.promptId;
+        
+        if (this.isSelectionMode) {
+            if (!checkbox) {
+                this.addSelectionCheckbox(card);
+            }
+            card.classList.add('selectable');
+        } else {
+            const checkboxContainer = card.querySelector('.bulk-selection-container');
+            if (checkboxContainer) {
+                checkboxContainer.remove();
+            }
+            card.classList.remove('selectable', 'selected');
+            // Remove from selection when exiting selection mode
+            this.selectedPrompts.delete(promptId);
+        }
+    }
+
+    addSelectionCheckbox(card) {
+        const promptId = card.dataset.promptId;
+        
+        // Create checkbox container
+        const checkboxContainer = document.createElement('div');
+        checkboxContainer.className = 'bulk-selection-container';
+        
+        const checkbox = document.createElement('input');
+        checkbox.type = 'checkbox';
+        checkbox.className = 'bulk-selection-checkbox';
+        checkbox.dataset.promptId = promptId;
+        checkbox.checked = this.selectedPrompts.has(promptId);
+        
+        checkbox.addEventListener('change', (e) => {
+            this.handlePromptSelection(promptId, e.target.checked);
+        });
+        
+        checkboxContainer.appendChild(checkbox);
+        
+        // Insert checkbox at the beginning of the card
+        card.insertAdjacentElement('afterbegin', checkboxContainer);
+    }
+
+    handlePromptSelection(promptId, isSelected) {
+        if (isSelected) {
+            this.selectedPrompts.add(promptId);
+        } else {
+            this.selectedPrompts.delete(promptId);
+        }
+
+        // Update card appearance
+        const card = document.querySelector(`[data-prompt-id="${promptId}"]`);
+        card?.classList.toggle('selected', isSelected);
+
+        // Update toolbar
+        this.updateToolbar();
+    }
+
+    selectAllVisiblePrompts() {
+        const visibleCards = document.querySelectorAll('.prompt-card:not(.hidden)');
+        visibleCards.forEach(card => {
+            const promptId = card.dataset.promptId;
+            if (promptId) {
+                this.selectedPrompts.add(promptId);
+                card.classList.add('selected');
+                const checkbox = card.querySelector('.bulk-selection-checkbox');
+                if (checkbox) {
+                    checkbox.checked = true;
+                }
+            }
+        });
+        this.updateToolbar();
+    }
+
+    clearSelection() {
+        this.selectedPrompts.clear();
+        
+        // Update all checkboxes and card styles
+        document.querySelectorAll('.bulk-selection-checkbox').forEach(checkbox => {
+            checkbox.checked = false;
+        });
+        
+        document.querySelectorAll('.prompt-card.selected').forEach(card => {
+            card.classList.remove('selected');
+        });
+        
+        this.updateToolbar();
+        
+        // Hide toolbar if no selection
+        if (this.selectedPrompts.size === 0) {
+            this.toolbar?.classList.add('hidden');
+        }
+    }
+
+    updateToolbar() {
+        const count = this.selectedPrompts.size;
+        const countElement = document.querySelector('.bulk-selection-count');
+        
+        if (countElement) {
+            countElement.textContent = `${count} selected`;
+        }
+        
+        // Show/hide toolbar based on selection count
+        this.toolbar?.classList.toggle('hidden', count === 0 || !this.isSelectionMode);
+        
+        // Update button states
+        const actionButtons = document.querySelectorAll('.bulk-action-btn');
+        actionButtons.forEach(btn => {
+            btn.disabled = count === 0;
+        });
+    }
+
+    showBulkMoveModal() {
+        if (this.selectedPrompts.size === 0) return;
+        
+        // Create and show bulk move modal
+        const modal = this.createBulkMoveModal();
+        document.body.appendChild(modal);
+        modal.classList.add('show');
+        
+        // Show modal overlay
+        const overlay = document.getElementById('modalOverlay') || this.createModalOverlay();
+        overlay.classList.add('show');
+        document.body.style.overflow = 'hidden';
+    }
+
+    createBulkMoveModal() {
+        const modal = document.createElement('div');
+        modal.id = 'bulkMoveModal';
+        modal.className = 'modal';
+        
+        modal.innerHTML = `
+            <div class="modal-content">
+                <div class="modal-header">
+                    <h3 class="modal-title">Move ${this.selectedPrompts.size} Prompts</h3>
+                    <button class="modal-close" onclick="this.closest('.modal').remove(); document.getElementById('modalOverlay').classList.remove('show'); document.body.style.overflow = '';">&times;</button>
+                </div>
+                <div class="modal-body">
+                    <div class="form-group">
+                        <label for="bulkMoveCategory">Move to Category:</label>
+                        <select id="bulkMoveCategory" class="form-select" required>
+                            <option value="">Select category...</option>
+                        </select>
+                    </div>
+                    <div class="form-group">
+                        <label for="bulkMoveSubcategory">Subcategory (optional):</label>
+                        <select id="bulkMoveSubcategory" class="form-select">
+                            <option value="">No subcategory</option>
+                        </select>
+                    </div>
+                    <div class="form-actions">
+                        <button type="button" class="btn-secondary" onclick="this.closest('.modal').remove(); document.getElementById('modalOverlay').classList.remove('show'); document.body.style.overflow = '';">Cancel</button>
+                        <button type="button" class="btn-primary" onclick="bulkOperationsManager.executeBulkMove()">Move Prompts</button>
+                    </div>
+                </div>
+            </div>
+        `;
+        
+        // Populate categories
+        setTimeout(() => {
+            this.populateBulkMoveCategories();
+        }, 50);
+        
+        return modal;
+    }
+
+    populateBulkMoveCategories() {
+        const categorySelect = document.getElementById('bulkMoveCategory');
+        const subcategorySelect = document.getElementById('bulkMoveSubcategory');
+        
+        if (!categorySelect) return;
+        
+        const categories = categoryManager.getAllCategories();
+        categorySelect.innerHTML = '<option value="">Select category...</option>';
+        
+        Object.values(categories).forEach(category => {
+            if (category.id !== 'all') {
+                const option = document.createElement('option');
+                option.value = category.id;
+                option.textContent = category.name;
+                categorySelect.appendChild(option);
+            }
+        });
+        
+        // Handle category change to populate subcategories
+        categorySelect.addEventListener('change', () => {
+            const selectedCategory = categories[categorySelect.value];
+            subcategorySelect.innerHTML = '<option value="">No subcategory</option>';
+            
+            if (selectedCategory && selectedCategory.subcategories) {
+                Object.values(selectedCategory.subcategories).forEach(subcategory => {
+                    const option = document.createElement('option');
+                    option.value = subcategory.id;
+                    option.textContent = subcategory.name;
+                    subcategorySelect.appendChild(option);
+                });
+            }
+        });
+    }
+
+    executeBulkMove() {
+        const categorySelect = document.getElementById('bulkMoveCategory');
+        const subcategorySelect = document.getElementById('bulkMoveSubcategory');
+        
+        const targetCategory = categorySelect?.value;
+        const targetSubcategory = subcategorySelect?.value || null;
+        
+        if (!targetCategory) {
+            alert('Please select a target category');
+            return;
+        }
+        
+        let movedCount = 0;
+        
+        this.selectedPrompts.forEach(promptId => {
+            const prompt = promptManager.getPrompt(promptId);
+            if (prompt) {
+                prompt.category = targetCategory;
+                prompt.subcategory = targetSubcategory;
+                prompt.updatedAt = new Date().toISOString();
+                promptManager.updatePrompt(promptId, prompt);
+                movedCount++;
+            }
+        });
+        
+        // Close modal
+        document.getElementById('bulkMoveModal')?.remove();
+        document.getElementById('modalOverlay')?.classList.remove('show');
+        document.body.style.overflow = '';
+        
+        // Show success message
+        showNotification(`Successfully moved ${movedCount} prompts`, 'success');
+        
+        // Clear selection and refresh display
+        this.clearSelection();
+        if (window.searchFilterManager) {
+            window.searchFilterManager.refreshData();
+            window.searchFilterManager.updateDisplay();
+        }
+    }
+
+    exportSelectedPrompts() {
+        if (this.selectedPrompts.size === 0) return;
+        
+        const selectedPromptData = [];
+        this.selectedPrompts.forEach(promptId => {
+            const prompt = promptManager.getPrompt(promptId);
+            if (prompt) {
+                selectedPromptData.push(prompt);
+            }
+        });
+        
+        const exportData = {
+            timestamp: new Date().toISOString(),
+            version: '1.0.0',
+            exportType: 'bulk_selection',
+            data: {
+                prompts: selectedPromptData,
+                totalPrompts: selectedPromptData.length
+            }
+        };
+        
+        // Create filename
+        const now = new Date();
+        const timestamp = now.toISOString().slice(0, 19).replace(/:/g, '-').replace('T', '_');
+        const filename = `ai-prompts-bulk-export_${timestamp}.json`;
+        
+        // Download the file
+        if (dataManager) {
+            dataManager.downloadJSON(exportData, filename);
+            showNotification(`Exported ${selectedPromptData.length} prompts`, 'success');
+        }
+    }
+
+    showBulkDeleteConfirmation() {
+        if (this.selectedPrompts.size === 0) return;
+        
+        const confirmMessage = `Are you sure you want to delete ${this.selectedPrompts.size} selected prompts? This action cannot be undone.`;
+        
+        if (confirm(confirmMessage)) {
+            this.executeBulkDelete();
+        }
+    }
+
+    executeBulkDelete() {
+        let deletedCount = 0;
+        
+        this.selectedPrompts.forEach(promptId => {
+            if (promptManager.deletePrompt(promptId)) {
+                deletedCount++;
+            }
+        });
+        
+        // Show success message
+        showNotification(`Successfully deleted ${deletedCount} prompts`, 'success');
+        
+        // Clear selection and refresh display
+        this.clearSelection();
+        if (window.searchFilterManager) {
+            window.searchFilterManager.refreshData();
+            window.searchFilterManager.updateDisplay();
+        }
+    }
+
+    createModalOverlay() {
+        let overlay = document.getElementById('modalOverlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'modalOverlay';
+            overlay.className = 'modal-overlay';
+            document.body.appendChild(overlay);
+        }
+        return overlay;
+    }
+}
+
+// Keyboard Shortcuts Management
+class KeyboardShortcutsManager {
+    constructor() {
+        this.shortcuts = new Map();
+        this.isInputFocused = false;
+        this.init();
+    }
+
+    init() {
+        this.setupShortcuts();
+        this.setupEventListeners();
+        this.createShortcutsHelp();
+    }
+
+    setupShortcuts() {
+        // Navigation shortcuts
+        this.addShortcut('n', 'New Prompt', () => this.showPromptModal(), { ctrl: true });
+        this.addShortcut('f', 'Focus Search', () => this.focusSearch(), { ctrl: true });
+        this.addShortcut('d', 'Data Management', () => this.showDataManagement(), { ctrl: true });
+        
+        // Bulk operations shortcuts
+        this.addShortcut('b', 'Toggle Bulk Select', () => this.toggleBulkSelect(), { ctrl: true });
+        this.addShortcut('a', 'Select All', () => this.selectAll(), { ctrl: true });
+        this.addShortcut('Delete', 'Delete Selected', () => this.deleteSelected());
+        this.addShortcut('m', 'Move Selected', () => this.moveSelected(), { ctrl: true });
+        this.addShortcut('e', 'Export Selected', () => this.exportSelected(), { ctrl: true });
+        
+        // General shortcuts
+        this.addShortcut('?', 'Show Help', () => this.showHelp(), { shift: true });
+        this.addShortcut('Escape', 'Close Modal/Cancel', () => this.handleEscape());
+        this.addShortcut('Enter', 'Confirm Action', () => this.handleEnter());
+        
+        // Quick actions
+        this.addShortcut('r', 'Refresh/Reload', () => this.refreshData(), { ctrl: true });
+        this.addShortcut('s', 'Save Current', () => this.saveCurrentAction(), { ctrl: true });
+        
+        // Theme toggle (preparing for upcoming feature)
+        this.addShortcut('t', 'Toggle Theme', () => this.toggleTheme(), { ctrl: true, shift: true });
+    }
+
+    addShortcut(key, description, action, modifiers = {}) {
+        this.shortcuts.set(key.toLowerCase(), {
+            key,
+            description,
+            action,
+            ctrl: modifiers.ctrl || false,
+            shift: modifiers.shift || false,
+            alt: modifiers.alt || false,
+            meta: modifiers.meta || false
+        });
+    }
+
+    setupEventListeners() {
+        document.addEventListener('keydown', (e) => this.handleKeyDown(e));
+        
+        // Track input focus state
+        document.addEventListener('focusin', (e) => {
+            this.isInputFocused = this.isInputElement(e.target);
+        });
+        
+        document.addEventListener('focusout', (e) => {
+            this.isInputFocused = false;
+        });
+    }
+
+    handleKeyDown(e) {
+        // Don't trigger shortcuts when typing in inputs (except for specific cases)
+        if (this.isInputFocused && !this.isGlobalShortcut(e.key)) {
+            return;
+        }
+
+        const key = e.key.toLowerCase();
+        const shortcut = this.shortcuts.get(key);
+
+        if (shortcut && this.matchesModifiers(e, shortcut)) {
+            e.preventDefault();
+            e.stopPropagation();
+            
+            try {
+                shortcut.action();
+                this.showShortcutFeedback(shortcut.description);
+            } catch (error) {
+                console.error('Keyboard shortcut error:', error);
+            }
+        }
+    }
+
+    matchesModifiers(event, shortcut) {
+        return (
+            !!event.ctrlKey === shortcut.ctrl &&
+            !!event.shiftKey === shortcut.shift &&
+            !!event.altKey === shortcut.alt &&
+            !!event.metaKey === shortcut.meta
+        );
+    }
+
+    isInputElement(element) {
+        const inputTypes = ['input', 'textarea', 'select'];
+        return inputTypes.includes(element.tagName.toLowerCase()) ||
+               element.contentEditable === 'true' ||
+               element.hasAttribute('contenteditable');
+    }
+
+    isGlobalShortcut(key) {
+        // These shortcuts work even when inputs are focused
+        return ['escape', 'f1', 'f2', 'f3', 'f4', 'f5', 'f6', 'f7', 'f8', 'f9', 'f10', 'f11', 'f12'].includes(key.toLowerCase());
+    }
+
+    // Shortcut action implementations
+    showPromptModal() {
+        if (typeof showPromptModal === 'function') {
+            showPromptModal('add');
+        }
+    }
+
+    focusSearch() {
+        const searchInput = document.getElementById('searchInput');
+        if (searchInput) {
+            searchInput.focus();
+            searchInput.select();
+        }
+    }
+
+    showDataManagement() {
+        if (typeof showDataManagementModal === 'function') {
+            showDataManagementModal();
+        }
+    }
+
+    toggleBulkSelect() {
+        if (bulkOperationsManager) {
+            bulkOperationsManager.toggleSelectionMode();
+        }
+    }
+
+    selectAll() {
+        if (bulkOperationsManager && bulkOperationsManager.isSelectionMode) {
+            bulkOperationsManager.selectAllVisiblePrompts();
+        } else {
+            // Default browser select all behavior when not in bulk mode
+            return false;
+        }
+    }
+
+    deleteSelected() {
+        if (bulkOperationsManager && bulkOperationsManager.selectedPrompts.size > 0) {
+            bulkOperationsManager.showBulkDeleteConfirmation();
+        }
+    }
+
+    moveSelected() {
+        if (bulkOperationsManager && bulkOperationsManager.selectedPrompts.size > 0) {
+            bulkOperationsManager.showBulkMoveModal();
+        }
+    }
+
+    exportSelected() {
+        if (bulkOperationsManager && bulkOperationsManager.selectedPrompts.size > 0) {
+            bulkOperationsManager.exportSelectedPrompts();
+        }
+    }
+
+    handleEscape() {
+        // Close any open modals
+        const openModals = document.querySelectorAll('.modal.show');
+        if (openModals.length > 0) {
+            openModals.forEach(modal => {
+                modal.classList.remove('show');
+            });
+            
+            const overlay = document.getElementById('modalOverlay');
+            if (overlay) {
+                overlay.classList.remove('show');
+            }
+            
+            document.body.style.overflow = '';
+            return;
+        }
+
+        // Exit bulk selection mode
+        if (bulkOperationsManager && bulkOperationsManager.isSelectionMode) {
+            bulkOperationsManager.clearSelection();
+        }
+    }
+
+    handleEnter() {
+        // Handle confirm actions in modals
+        const activeModal = document.querySelector('.modal.show');
+        if (activeModal) {
+            const primaryButton = activeModal.querySelector('.btn-primary');
+            if (primaryButton && !primaryButton.disabled) {
+                primaryButton.click();
+            }
+        }
+    }
+
+    refreshData() {
+        if (window.searchFilterManager) {
+            window.searchFilterManager.refreshData();
+            window.searchFilterManager.updateDisplay();
+            this.showShortcutFeedback('Data refreshed');
+        }
+    }
+
+    saveCurrentAction() {
+        // Save current action (useful for forms, etc.)
+        const activeModal = document.querySelector('.modal.show');
+        if (activeModal) {
+            const form = activeModal.querySelector('form');
+            if (form) {
+                const submitButton = form.querySelector('button[type="submit"], .btn-primary');
+                if (submitButton && !submitButton.disabled) {
+                    submitButton.click();
+                }
+            }
+        }
+    }
+
+    toggleTheme() {
+        // This will be implemented when theme toggle is added
+        this.showShortcutFeedback('Theme toggle coming soon...');
+    }
+
+    showShortcutFeedback(message) {
+        // Create a temporary feedback element
+        const feedback = document.createElement('div');
+        feedback.className = 'shortcut-feedback';
+        feedback.textContent = message;
+        
+        feedback.style.cssText = `
+            position: fixed;
+            top: 20px;
+            right: 20px;
+            background: linear-gradient(135deg, #667eea 0%, #764ba2 100%);
+            color: white;
+            padding: 8px 16px;
+            border-radius: 6px;
+            font-size: 0.875rem;
+            z-index: 10000;
+            animation: slideInFade 0.3s ease-out;
+            pointer-events: none;
+        `;
+
+        document.body.appendChild(feedback);
+
+        // Remove after animation
+        setTimeout(() => {
+            feedback.style.animation = 'slideOutFade 0.3s ease-in forwards';
+            setTimeout(() => {
+                feedback.remove();
+            }, 300);
+        }, 2000);
+    }
+
+    createShortcutsHelp() {
+        // Create help modal HTML that can be shown later
+        this.helpModalHTML = `
+            <div class="modal" id="shortcutsHelpModal">
+                <div class="modal-content">
+                    <div class="modal-header">
+                        <h3 class="modal-title">Keyboard Shortcuts</h3>
+                        <button class="modal-close" onclick="this.closest('.modal').classList.remove('show'); document.getElementById('modalOverlay').classList.remove('show'); document.body.style.overflow = '';">&times;</button>
+                    </div>
+                    <div class="modal-body">
+                        <div class="shortcuts-grid">
+                            ${this.generateShortcutsTable()}
+                        </div>
+                        <div class="shortcuts-footer">
+                            <p><strong>Tip:</strong> Most shortcuts don't work when typing in input fields (except Escape and function keys).</p>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        `;
+    }
+
+    generateShortcutsTable() {
+        let html = '<div class="shortcuts-categories">';
+        
+        const categories = {
+            'Navigation': ['n', 'f', 'd'],
+            'Bulk Operations': ['b', 'a', 'Delete', 'm', 'e'],
+            'General': ['?', 'Escape', 'Enter', 'r', 's'],
+            'Theme': ['t']
+        };
+
+        Object.entries(categories).forEach(([category, keys]) => {
+            html += `<div class="shortcut-category">
+                <h4>${category}</h4>
+                <div class="shortcut-list">`;
+                
+            keys.forEach(key => {
+                const shortcut = this.shortcuts.get(key.toLowerCase());
+                if (shortcut) {
+                    const keyDisplay = this.formatKeyDisplay(shortcut);
+                    html += `<div class="shortcut-item">
+                        <span class="shortcut-key">${keyDisplay}</span>
+                        <span class="shortcut-desc">${shortcut.description}</span>
+                    </div>`;
+                }
+            });
+            
+            html += '</div></div>';
+        });
+        
+        html += '</div>';
+        return html;
+    }
+
+    formatKeyDisplay(shortcut) {
+        let parts = [];
+        
+        if (shortcut.ctrl) parts.push('Ctrl');
+        if (shortcut.shift) parts.push('Shift');
+        if (shortcut.alt) parts.push('Alt');
+        if (shortcut.meta) parts.push('Cmd');
+        
+        parts.push(shortcut.key.charAt(0).toUpperCase() + shortcut.key.slice(1));
+        
+        return parts.join(' + ');
+    }
+
+    showHelp() {
+        // Remove existing help modal if present
+        const existingModal = document.getElementById('shortcutsHelpModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+
+        // Add help modal to DOM
+        document.body.insertAdjacentHTML('beforeend', this.helpModalHTML);
+        
+        // Show modal
+        const modal = document.getElementById('shortcutsHelpModal');
+        const overlay = document.getElementById('modalOverlay') || this.createModalOverlay();
+        
+        modal.classList.add('show');
+        overlay.classList.add('show');
+        document.body.style.overflow = 'hidden';
+    }
+
+    createModalOverlay() {
+        let overlay = document.getElementById('modalOverlay');
+        if (!overlay) {
+            overlay = document.createElement('div');
+            overlay.id = 'modalOverlay';
+            overlay.className = 'modal-overlay';
+            document.body.appendChild(overlay);
+        }
+        return overlay;
+    }
+
+    // Get current shortcuts for display
+    getShortcutsList() {
+        return Array.from(this.shortcuts.values());
     }
 }
 
