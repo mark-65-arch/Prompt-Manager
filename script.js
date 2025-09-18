@@ -6190,13 +6190,12 @@ class SettingsManager {
             const octokit = await getUncachableGitHubClient();
             
             // Verify connection with user info
-            const { data: user } = await octokit.request('GET /user');
+            const { data: user } = await octokit.rest.request('/user');
             console.log('GitHub connection successful:', user.login);
-            
+
             // Load repositories
-            const { data: repos } = await octokit.request('GET /user/repos', {
+            const { data: repos } = await octokit.rest.repos.listForAuthenticatedUser({
                 per_page: 100,
-                visibility: 'all',
                 sort: 'updated'
             });
             
