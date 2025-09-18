@@ -21,7 +21,8 @@ Preferred communication style: Simple, everyday language.
 
 ### September 18, 2025 - GitHub Integration & Platform Enhancements
 - **GitHub Integration**: Implemented comprehensive GitHub backup system with environment-aware authentication
-  - Replit GitHub connector support for seamless integration in Replit environment
+  - Replit GitHub connector support for seamless integration in Replit environment (Connection ID: connection:conn_github_01K5F2AT2R6MX439156CM5D7MA)
+  - Octokit CDN integration for browser-based GitHub API access
   - Personal Access Token fallback for GitHub Pages and external deployments
   - Repository selection and branch configuration through settings panel
   - Automatic and manual backup functionality with scheduling options
