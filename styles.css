@@ -957,6 +957,286 @@ body {
     50% { opacity: 0.7; }
 }
 
+/* Enhanced Animations and Transitions */
+
+/* Smooth transitions for all interactive elements */
+* {
+    transition-property: color, background-color, border-color, transform, box-shadow, opacity;
+    transition-duration: 0.2s;
+    transition-timing-function: cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+/* Card animations with staggered hover effects */
+.prompt-card {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.prompt-card::before {
+    content: '';
+    position: absolute;
+    top: 0;
+    left: -100%;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(90deg, transparent, rgba(255, 255, 255, 0.1), transparent);
+    transition: left 0.6s ease;
+    pointer-events: none;
+}
+
+.prompt-card:hover {
+    transform: translateY(-6px) scale(1.02);
+    box-shadow: 0 15px 35px rgba(0, 0, 0, 0.2);
+    z-index: 1;
+}
+
+.prompt-card:hover::before {
+    left: 100%;
+}
+
+/* Smooth animations for prompt card children */
+.prompt-card:hover .prompt-title {
+    color: var(--accent-blue);
+    transform: translateX(4px);
+}
+
+.prompt-card:hover .prompt-actions {
+    opacity: 1;
+    transform: translateY(0);
+}
+
+.prompt-actions {
+    opacity: 0.7;
+    transform: translateY(2px);
+    transition: all 0.3s ease;
+}
+
+/* Button micro-interactions */
+.btn-primary, .btn-secondary, .btn-danger {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+    overflow: hidden;
+}
+
+.btn-primary::before, .btn-secondary::before, .btn-danger::before {
+    content: '';
+    position: absolute;
+    top: 50%;
+    left: 50%;
+    width: 0;
+    height: 0;
+    background: rgba(255, 255, 255, 0.2);
+    border-radius: 50%;
+    transform: translate(-50%, -50%);
+    transition: all 0.4s ease;
+    pointer-events: none;
+}
+
+.btn-primary:active::before, .btn-secondary:active::before, .btn-danger:active::before {
+    width: 300px;
+    height: 300px;
+}
+
+.btn-primary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(102, 126, 234, 0.3);
+}
+
+.btn-secondary:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 6px 20px rgba(0, 0, 0, 0.15);
+}
+
+.btn-danger:hover {
+    transform: translateY(-2px);
+    box-shadow: 0 8px 25px rgba(239, 68, 68, 0.3);
+}
+
+/* Enhanced modal animations */
+.modal {
+    opacity: 0;
+    visibility: hidden;
+    transform: scale(0.95);
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.modal.show {
+    opacity: 1;
+    visibility: visible;
+    transform: scale(1);
+}
+
+.modal-content {
+    animation: modalSlideIn 0.4s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+@keyframes modalSlideIn {
+    0% {
+        transform: translateY(30px);
+        opacity: 0;
+    }
+    100% {
+        transform: translateY(0);
+        opacity: 1;
+    }
+}
+
+/* Sidebar animations */
+.sidebar {
+    transition: transform 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.category-item {
+    transition: all 0.2s ease;
+}
+
+.category-item:hover {
+    transform: translateX(4px);
+}
+
+.category-button {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+}
+
+.category-button::after {
+    content: '';
+    position: absolute;
+    left: 0;
+    bottom: 0;
+    width: 0;
+    height: 2px;
+    background: var(--accent-blue);
+    transition: width 0.3s ease;
+}
+
+.category-button:hover::after,
+.category-button.active::after {
+    width: 100%;
+}
+
+/* Search input animations */
+.search-input {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.search-input:focus {
+    transform: scale(1.02);
+    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.15);
+}
+
+/* Tag animations */
+.tag {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transform-origin: center;
+}
+
+.tag:hover {
+    transform: scale(1.1) rotate(2deg);
+    box-shadow: 0 4px 12px rgba(0, 0, 0, 0.15);
+}
+
+.tag.active {
+    animation: tagPulse 0.5s ease;
+}
+
+@keyframes tagPulse {
+    0%, 100% { transform: scale(1); }
+    50% { transform: scale(1.1); }
+}
+
+/* Star rating animations */
+.star {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+    transform-origin: center;
+}
+
+.star:hover {
+    transform: scale(1.3) rotate(15deg);
+    filter: brightness(1.2);
+}
+
+.star.active {
+    animation: starTwinkle 0.6s ease;
+}
+
+@keyframes starTwinkle {
+    0%, 100% { transform: scale(1) rotate(0deg); }
+    25% { transform: scale(1.2) rotate(10deg); }
+    75% { transform: scale(1.1) rotate(-5deg); }
+}
+
+/* Recent prompts animations */
+.recent-prompt-item {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+    position: relative;
+}
+
+.recent-prompt-item::before {
+    content: '';
+    position: absolute;
+    left: 0;
+    top: 0;
+    bottom: 0;
+    width: 3px;
+    background: var(--accent-blue);
+    transform: scaleY(0);
+    transition: transform 0.3s ease;
+}
+
+.recent-prompt-item:hover::before {
+    transform: scaleY(1);
+}
+
+.recent-prompt-item:hover {
+    background-color: var(--surface-hover);
+    transform: translateX(8px);
+    padding-left: 1rem;
+}
+
+/* Theme toggle animation */
+.theme-toggle-btn {
+    transition: all 0.3s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.theme-toggle-btn:hover {
+    transform: rotate(180deg) scale(1.1);
+}
+
+.theme-icon {
+    transition: all 0.3s ease;
+}
+
+/* Enhanced focus states */
+.form-input:focus,
+.form-textarea:focus,
+.form-select:focus {
+    transform: translateY(-1px);
+    box-shadow: 0 4px 20px rgba(102, 126, 234, 0.15);
+}
+
+/* Variable tag animations */
+.variable-tag {
+    transition: all 0.2s cubic-bezier(0.4, 0, 0.2, 1);
+}
+
+.variable-tag:hover {
+    transform: translateY(-2px) scale(1.05);
+    box-shadow: 0 6px 20px rgba(102, 126, 234, 0.3);
+}
+
+.variable-tag:active {
+    transform: scale(0.95);
+    animation: variableInsert 0.3s ease;
+}
+
+@keyframes variableInsert {
+    0% { transform: scale(0.95); }
+    50% { transform: scale(1.1); background-color: var(--accent-green); }
+    100% { transform: scale(1); }
+}
+
 /* Tag Cloud */
 .tag-cloud-section {
     margin-bottom: 1.5rem;
