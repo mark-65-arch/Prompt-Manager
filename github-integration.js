@@ -30,7 +30,7 @@ class GitHubManager {
     async getGitHubClient() {
         try {
             const { getUncachableGitHubClient, getEnvironmentInfo } = await import('./octokit-client.js');
-            const envInfo = getEnvironmentInfo();
+            const envInfo = await getEnvironmentInfo();
             
             if (!envInfo.hasOctokit) {
                 throw new Error('GitHub integration not available. Octokit library not loaded.');
@@ -54,7 +54,7 @@ class GitHubManager {
     async isGitHubConfigured() {
         try {
             const { getEnvironmentInfo } = await import('./octokit-client.js');
-            const envInfo = getEnvironmentInfo();
+            const envInfo = await getEnvironmentInfo();
             
             if (!envInfo.hasOctokit) return false;
             
@@ -85,7 +85,17 @@ class GitHubManager {
             }));
         } catch (error) {
             console.error('Failed to fetch repositories:', error);
-            throw new Error('Failed to fetch your GitHub repositories. Please check your connection.');
+            
+            // Provide more specific error messages
+            if (error.message.includes('401')) {
+                throw new Error('GitHub authentication failed. Please check your Personal Access Token.');
+            } else if (error.message.includes('403')) {
+                throw new Error('GitHub access denied. Please ensure your token has "repo" scope permissions.');
+            } else if (error.message.includes('network') || error.message.includes('fetch')) {
+                throw new Error('Network error while connecting to GitHub. Please check your internet connection.');
+            } else {
+                throw new Error(`Failed to fetch GitHub repositories: ${error.message}`);
+            }
         }
     }
 
@@ -117,8 +127,14 @@ class GitHubManager {
 
     // Backup to GitHub repository
     async backupToGitHub(manual = false) {
+        // Check if GitHub is configured
+        const isConfigured = await this.isGitHubConfigured();
+        if (!isConfigured) {
+            throw new Error('GitHub connection is not set up. Please configure your GitHub token and test the connection first.');
+        }
+        
         if (!this.settings.enabled || !this.settings.repositoryName) {
-            throw new Error('GitHub backup is not properly configured.');
+            throw new Error('GitHub backup is not properly configured. Please select a repository in Settings → GitHub Integration.');
         }
 
         try {

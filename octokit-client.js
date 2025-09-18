@@ -43,10 +43,21 @@ let connectionSettings;
 
 // Get access token based on environment
 async function getAccessToken() {
-    if (isReplitEnvironment()) {
-        return await getReplitAccessToken();
-    } else {
-        return getUserProvidedToken();
+    try {
+        if (isReplitEnvironment()) {
+            // In Replit, try the connector first, but fallback to user token if it fails
+            try {
+                return await getReplitAccessToken();
+            } catch (replitError) {
+                console.warn('Replit connector failed, falling back to user token:', replitError);
+                return getUserProvidedToken();
+            }
+        } else {
+            return getUserProvidedToken();
+        }
+    } catch (error) {
+        console.error('Token retrieval failed:', error);
+        throw new Error(`Authentication failed: ${error.message}`);
     }
 }
 
@@ -112,15 +123,23 @@ async function getReplitAccessToken() {
 
 // User-provided token (for GitHub Pages or other environments)
 function getUserProvidedToken() {
-    // Try to get from settings
-    const settings = JSON.parse(localStorage.getItem('aiPromptManager_githubSettings') || '{}');
-    const token = settings.personalAccessToken || sessionStorage.getItem('github_pat');
-    
-    if (!token) {
-        throw new Error('GitHub Personal Access Token required. Please add one in Settings.');
+    try {
+        // Try to get from settings
+        const settings = JSON.parse(localStorage.getItem('aiPromptManager_githubSettings') || '{}');
+        const token = settings.personalAccessToken || sessionStorage.getItem('github_pat');
+        
+        if (!token || token.trim() === '') {
+            throw new Error('GitHub Personal Access Token required. Please add one in Settings.');
+        }
+        
+        return token.trim();
+    } catch (error) {
+        if (error instanceof Error) {
+            throw error;
+        } else {
+            throw new Error('Failed to retrieve GitHub token from settings');
+        }
     }
-    
-    return token;
 }
 
 // Main function to get GitHub client
@@ -129,13 +148,23 @@ export async function getUncachableGitHubClient() {
         const OctokitClass = await getOctokitClass();
         const accessToken = await getAccessToken();
         
+        if (!accessToken) {
+            throw new Error('Access token is required but was not provided');
+        }
+        
         return new OctokitClass({ 
             auth: accessToken,
             userAgent: 'AI-Prompt-Manager/2.0'
         });
     } catch (error) {
         console.error('Failed to create GitHub client:', error);
-        throw error;
+        
+        // Ensure we always throw a proper Error object
+        if (error instanceof Error) {
+            throw error;
+        } else {
+            throw new Error(`GitHub client creation failed: ${JSON.stringify(error)}`);
+        }
     }
 }
 
