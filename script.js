@@ -794,6 +794,10 @@ document.addEventListener('DOMContentLoaded', function() {
     // Initialize bulk operations manager
     bulkOperationsManager = new BulkOperationsManager();
     
+    // Initialize mobile touch manager
+    mobileTouchManager = new MobileTouchManager();
+    window.mobileTouchManager = mobileTouchManager; // Make globally accessible
+    
     // Initialize keyboard shortcuts manager
     keyboardShortcutsManager = new KeyboardShortcutsManager();
     
@@ -1141,6 +1145,218 @@ class LoadingManager {
 
 // Global loading manager instance
 let loadingManager;
+
+// Mobile Touch Interactions
+class MobileTouchManager {
+    constructor() {
+        this.startX = 0;
+        this.startY = 0;
+        this.currentX = 0;
+        this.currentY = 0;
+        this.isDragging = false;
+        this.swipeThreshold = 100;
+        this.swipeVelocityThreshold = 0.3;
+        this.startTime = 0;
+        
+        this.init();
+    }
+    
+    init() {
+        if (window.innerWidth <= 768) {
+            this.setupSwipeGestures();
+            this.setupPullToRefresh();
+            this.enhanceTouchTargets();
+        }
+        
+        // Reinitialize on window resize
+        window.addEventListener('resize', () => {
+            if (window.innerWidth <= 768) {
+                this.setupSwipeGestures();
+                this.setupPullToRefresh();
+                this.enhanceTouchTargets();
+            }
+        });
+    }
+    
+    setupSwipeGestures() {
+        const promptCards = document.querySelectorAll('.prompt-card');
+        
+        promptCards.forEach(card => {
+            // Remove existing listeners to prevent duplicates
+            card.removeEventListener('touchstart', this.handleTouchStart.bind(this));
+            card.removeEventListener('touchmove', this.handleTouchMove.bind(this));
+            card.removeEventListener('touchend', this.handleTouchEnd.bind(this));
+            
+            // Add touch event listeners
+            card.addEventListener('touchstart', this.handleTouchStart.bind(this), { passive: false });
+            card.addEventListener('touchmove', this.handleTouchMove.bind(this), { passive: false });
+            card.addEventListener('touchend', this.handleTouchEnd.bind(this), { passive: false });
+        });
+    }
+    
+    handleTouchStart(e) {
+        const touch = e.touches[0];
+        this.startX = touch.clientX;
+        this.startY = touch.clientY;
+        this.startTime = Date.now();
+        this.isDragging = false;
+        
+        // Remove any existing swipe classes
+        e.currentTarget.classList.remove('swiping-left', 'swiping-right');
+    }
+    
+    handleTouchMove(e) {
+        if (!e.touches[0]) return;
+        
+        const touch = e.touches[0];
+        this.currentX = touch.clientX;
+        this.currentY = touch.clientY;
+        
+        const deltaX = this.currentX - this.startX;
+        const deltaY = this.currentY - this.startY;
+        
+        // Determine if this is a horizontal swipe
+        if (Math.abs(deltaX) > Math.abs(deltaY) && Math.abs(deltaX) > 10) {
+            this.isDragging = true;
+            e.preventDefault(); // Prevent scrolling
+            
+            const card = e.currentTarget;
+            
+            // Add visual feedback
+            if (deltaX > 20) {
+                card.classList.add('swiping-right');
+                card.classList.remove('swiping-left');
+            } else if (deltaX < -20) {
+                card.classList.add('swiping-left');
+                card.classList.remove('swiping-right');
+            }
+            
+            // Apply transform for visual feedback
+            const transform = Math.min(Math.max(deltaX / 4, -50), 50);
+            card.style.transform = `translateX(${transform}px)`;
+        }
+    }
+    
+    handleTouchEnd(e) {
+        const card = e.currentTarget;
+        const deltaX = this.currentX - this.startX;
+        const deltaTime = Date.now() - this.startTime;
+        const velocity = Math.abs(deltaX) / deltaTime;
+        
+        // Reset transform
+        card.style.transform = '';
+        card.classList.remove('swiping-left', 'swiping-right');
+        
+        // Check if swipe threshold is met
+        if (this.isDragging && (Math.abs(deltaX) > this.swipeThreshold || velocity > this.swipeVelocityThreshold)) {
+            const promptId = card.dataset.promptId;
+            
+            if (deltaX > 0) {
+                // Swipe right - Quick copy
+                this.handleSwipeRight(promptId);
+            } else {
+                // Swipe left - Quick delete
+                this.handleSwipeLeft(promptId);
+            }
+        }
+        
+        this.isDragging = false;
+    }
+    
+    handleSwipeRight(promptId) {
+        // Quick copy action
+        const prompt = promptManager.getPrompt(promptId);
+        if (prompt) {
+            copyToClipboard(prompt.content);
+            showToast('Prompt copied to clipboard!', 'success');
+            
+            // Track this as a recent access
+            promptManager.trackRecentAccess(promptId);
+        }
+    }
+    
+    handleSwipeLeft(promptId) {
+        // Quick delete with confirmation
+        const prompt = promptManager.getPrompt(promptId);
+        if (prompt) {
+            const confirmed = confirm(`Delete "${prompt.title}"? This cannot be undone.`);
+            if (confirmed) {
+                promptManager.deletePrompt(promptId);
+                refreshCurrentCategoryDisplay();
+                showToast('Prompt deleted', 'success');
+            }
+        }
+    }
+    
+    setupPullToRefresh() {
+        const mainContent = document.querySelector('.main-content');
+        let startY = 0;
+        let isPulling = false;
+        
+        mainContent.addEventListener('touchstart', (e) => {
+            startY = e.touches[0].clientY;
+            isPulling = false;
+        }, { passive: true });
+        
+        mainContent.addEventListener('touchmove', (e) => {
+            const currentY = e.touches[0].clientY;
+            const deltaY = currentY - startY;
+            
+            // Check if we're at the top and pulling down
+            if (mainContent.scrollTop === 0 && deltaY > 50) {
+                isPulling = true;
+                
+                // Add pull indicator if not exists
+                let pullIndicator = document.querySelector('.pull-to-refresh');
+                if (!pullIndicator) {
+                    pullIndicator = document.createElement('div');
+                    pullIndicator.className = 'pull-to-refresh';
+                    pullIndicator.innerHTML = '↓ Pull to refresh';
+                    mainContent.prepend(pullIndicator);
+                }
+                
+                pullIndicator.classList.add('visible');
+                
+                if (deltaY > 100) {
+                    pullIndicator.innerHTML = '↑ Release to refresh';
+                }
+            }
+        }, { passive: true });
+        
+        mainContent.addEventListener('touchend', () => {
+            const pullIndicator = document.querySelector('.pull-to-refresh');
+            
+            if (isPulling && pullIndicator) {
+                pullIndicator.innerHTML = '↻ Refreshing...';
+                
+                // Refresh data
+                setTimeout(() => {
+                    refreshCurrentCategoryDisplay();
+                    pullIndicator.classList.remove('visible');
+                    setTimeout(() => pullIndicator.remove(), 300);
+                    showToast('Prompts refreshed!', 'success');
+                }, 1000);
+            }
+            
+            isPulling = false;
+        }, { passive: true });
+    }
+    
+    enhanceTouchTargets() {
+        // Add touch feedback to interactive elements
+        const touchElements = document.querySelectorAll(
+            '.btn-primary, .btn-secondary, .btn-danger, .category-button, .tag, .prompt-actions button'
+        );
+        
+        touchElements.forEach(element => {
+            element.style.webkitTapHighlightColor = 'rgba(102, 126, 234, 0.1)';
+            element.style.tapHighlightColor = 'rgba(102, 126, 234, 0.1)';
+        });
+    }
+}
+
+// Global mobile touch manager instance
+let mobileTouchManager;
 
 // Mobile Menu Functionality
 function initializeMobileMenu() {
