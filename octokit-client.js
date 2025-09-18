@@ -10,16 +10,32 @@ function isReplitEnvironment() {
 }
 
 // Global Octokit reference for different environments
-function getOctokitClass() {
-    if (typeof window !== 'undefined' && window.Octokit) {
-        return window.Octokit; // CDN version
-    } else if (typeof require !== 'undefined') {
+async function getOctokitClass() {
+    // Try CDN version first (Skypack)
+    if (typeof window !== 'undefined') {
         try {
-            return require('@octokit/rest').Octokit; // Node.js
+            // Try global Octokit first (UMD builds)
+            if (window.Octokit) {
+                return window.Octokit;
+            }
+            
+            // Try dynamic import for ES modules (Skypack)
+            const { Octokit } = await import('https://cdn.skypack.dev/@octokit/rest');
+            return Octokit;
+        } catch (e) {
+            console.warn('CDN Octokit not available:', e);
+        }
+    }
+    
+    // Try Node.js require
+    if (typeof require !== 'undefined') {
+        try {
+            return require('@octokit/rest').Octokit;
         } catch (e) {
             console.warn('Octokit not available via require');
         }
     }
+    
     throw new Error('Octokit not available');
 }
 
@@ -110,7 +126,7 @@ function getUserProvidedToken() {
 // Main function to get GitHub client
 export async function getUncachableGitHubClient() {
     try {
-        const OctokitClass = getOctokitClass();
+        const OctokitClass = await getOctokitClass();
         const accessToken = await getAccessToken();
         
         return new OctokitClass({ 
@@ -124,9 +140,9 @@ export async function getUncachableGitHubClient() {
 }
 
 // Check if GitHub is available in current environment
-export function isGitHubAvailable() {
+export async function isGitHubAvailable() {
     try {
-        getOctokitClass();
+        await getOctokitClass();
         return true;
     } catch (error) {
         return false;
@@ -134,10 +150,10 @@ export function isGitHubAvailable() {
 }
 
 // Get environment type for UI display
-export function getEnvironmentInfo() {
+export async function getEnvironmentInfo() {
     return {
         isReplit: isReplitEnvironment(),
-        hasOctokit: isGitHubAvailable(),
+        hasOctokit: await isGitHubAvailable(),
         requiresToken: !isReplitEnvironment()
     };
 }
