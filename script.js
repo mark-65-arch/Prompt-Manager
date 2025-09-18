@@ -6190,9 +6190,19 @@ class SettingsManager {
             const octokit = await getUncachableGitHubClient();
             
             // Verify connection with user info
-            const user = await octokit.rest.request('/user');
+            console.log('Making request to /user endpoint...');
+            const userResponse = await octokit.rest.request('/user');
+            console.log('Raw user response:', userResponse);
+
+            // Handle different response structures
+            const user = userResponse.data || userResponse;
+            console.log('Processed user data:', user);
+
+            if (!user || !user.login) {
+                throw new Error('Invalid user response from GitHub API');
+            }
+
             console.log('GitHub connection successful:', user.login);
-            console.log('User data:', user);
 
             // Load repositories
             const repoResponse = await octokit.rest.repos.listForAuthenticatedUser({
