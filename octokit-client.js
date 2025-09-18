@@ -14,16 +14,29 @@ async function getOctokitClass() {
     // Try CDN version first (Skypack)
     if (typeof window !== 'undefined') {
         try {
-            // Try global Octokit first (UMD builds)
+            // Try global Octokit first (UMD builds from the script tag in HTML)
+            if (window.Octokit && window.Octokit.Octokit) {
+                return window.Octokit.Octokit;
+            }
             if (window.Octokit) {
                 return window.Octokit;
             }
             
             // Try dynamic import for ES modules (Skypack)
-            const { Octokit } = await import('https://cdn.skypack.dev/@octokit/rest');
+            console.log('Attempting to load Octokit from CDN...');
+            const { Octokit } = await import('https://cdn.skypack.dev/@octokit/rest@20.0.0');
             return Octokit;
         } catch (e) {
             console.warn('CDN Octokit not available:', e);
+            
+            // Last resort: try to use the global from the HTML script tag
+            if (typeof window !== 'undefined' && window.Octokit) {
+                const OctokitConstructor = window.Octokit.Octokit || window.Octokit;
+                if (OctokitConstructor) {
+                    console.log('Using global Octokit as fallback');
+                    return OctokitConstructor;
+                }
+            }
         }
     }
     
@@ -171,18 +184,25 @@ export async function getUncachableGitHubClient() {
 // Check if GitHub is available in current environment
 export async function isGitHubAvailable() {
     try {
-        await getOctokitClass();
+        const OctokitClass = await getOctokitClass();
+        console.log('Octokit availability check passed:', !!OctokitClass);
         return true;
     } catch (error) {
+        console.warn('Octokit availability check failed:', error);
         return false;
     }
 }
 
 // Get environment type for UI display
 export async function getEnvironmentInfo() {
+    const hasOctokit = await isGitHubAvailable();
+    const isReplit = isReplitEnvironment();
+    
+    console.log('Environment info:', { isReplit, hasOctokit, requiresToken: !isReplit });
+    
     return {
-        isReplit: isReplitEnvironment(),
-        hasOctokit: await isGitHubAvailable(),
-        requiresToken: !isReplitEnvironment()
+        isReplit,
+        hasOctokit,
+        requiresToken: !isReplit
     };
 }
