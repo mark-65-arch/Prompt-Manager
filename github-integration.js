@@ -216,7 +216,6 @@ class GitHubManager {
                 throw new Error('GitHub backup is not properly configured. Please select a repository in Settings → GitHub Integration, or use the local backup option.');
             }
 
-            try {
             const client = await this.getGitHubClient();
             const backupData = this.createBackupData();
             const fileName = `ai-prompt-manager-backup-${new Date().toISOString().split('T')[0]}.json`;

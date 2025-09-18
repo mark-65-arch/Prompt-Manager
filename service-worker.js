@@ -17,7 +17,7 @@ const FILES_TO_CACHE = [
 
 // Network-first resources (try network, fallback to cache)
 const NETWORK_FIRST_RESOURCES = [
-    '/api/',  // Any API endpoints
+    // No API endpoints for this static application
 ];
 
 // Cache-first resources (serve from cache, update in background)
