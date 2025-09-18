@@ -219,8 +219,9 @@ class GitHubManager {
             const client = await this.getGitHubClient();
             const backupData = this.createBackupData();
             const fileName = `ai-prompt-manager-backup-${new Date().toISOString().split('T')[0]}.json`;
+            const backupPath = `backups/${fileName}`;
             const content = JSON.stringify(backupData, null, 2);
-            
+
             // Get repository info
             const [owner, repo] = this.settings.repositoryName.split('/');
             
@@ -229,7 +230,7 @@ class GitHubManager {
                 const existingFile = await client.rest.repos.getContent({
                     owner,
                     repo,
-                    path: fileName,
+                    path: backupPath,
                     ref: this.settings.branch
                 });
 
@@ -237,7 +238,7 @@ class GitHubManager {
                 await client.rest.repos.createOrUpdateFileContents({
                     owner,
                     repo,
-                    path: fileName,
+                    path: backupPath,
                     message: `Update AI Prompt Manager backup - ${manual ? 'Manual' : 'Automatic'} backup`,
                     content: base64EncodeUTF8(content),
                     sha: existingFile.data.sha,
@@ -249,7 +250,7 @@ class GitHubManager {
                     await client.rest.repos.createOrUpdateFileContents({
                         owner,
                         repo,
-                        path: fileName,
+                        path: backupPath,
                         message: `Create AI Prompt Manager backup - ${manual ? 'Manual' : 'Automatic'} backup`,
                         content: base64EncodeUTF8(content),
                         branch: this.settings.branch
@@ -267,7 +268,7 @@ class GitHubManager {
                 success: true,
                 fileName,
                 message: 'Backup completed successfully',
-                url: `https://github.com/${this.settings.repositoryName}/blob/${this.settings.branch}/${fileName}`
+                url: `https://github.com/${this.settings.repositoryName}/blob/${this.settings.branch}/${backupPath}`
             };
 
         } catch (error) {
@@ -301,11 +302,14 @@ class GitHubManager {
         try {
             const client = await this.getGitHubClient();
             const [owner, repo] = this.settings.repositoryName.split('/');
-            
+
+            // Add backups/ prefix if not already present
+            const backupPath = fileName.startsWith('backups/') ? fileName : `backups/${fileName}`;
+
             const { data } = await client.rest.repos.getContent({
                 owner,
                 repo,
-                path: fileName,
+                path: backupPath,
                 ref: this.settings.branch
             });
 
@@ -354,13 +358,24 @@ class GitHubManager {
         try {
             const client = await this.getGitHubClient();
             const [owner, repo] = this.settings.repositoryName.split('/');
-            
-            const { data } = await client.rest.repos.getContent({
-                owner,
-                repo,
-                path: '',
-                ref: this.settings.branch
-            });
+
+            let data;
+            try {
+                // Try to get contents of backups folder
+                const response = await client.rest.repos.getContent({
+                    owner,
+                    repo,
+                    path: 'backups',
+                    ref: this.settings.branch
+                });
+                data = response.data;
+            } catch (error) {
+                if (error.status === 404) {
+                    // Backups folder doesn't exist yet, return empty array
+                    return [];
+                }
+                throw error;
+            }
 
             const backupFiles = data
                 .filter(file => file.name.startsWith('ai-prompt-manager-backup-') && file.name.endsWith('.json'))
