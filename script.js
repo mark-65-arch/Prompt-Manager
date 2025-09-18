@@ -6194,11 +6194,14 @@ class SettingsManager {
             console.log('GitHub connection successful:', user.login);
 
             // Load repositories
-            const { data: repos } = await octokit.rest.repos.listForAuthenticatedUser({
+            const repoResponse = await octokit.rest.repos.listForAuthenticatedUser({
                 per_page: 100,
                 sort: 'updated'
             });
-            
+            const repos = repoResponse.data;
+            console.log('Repository response:', repoResponse);
+            console.log('Repositories found:', repos);
+
             // Populate repository dropdown
             if (repositorySelect) {
                 repositorySelect.innerHTML = '<option value="">Select repository...</option>';
