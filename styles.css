@@ -754,6 +754,16 @@ body {
     font-size: 0.6875rem;
 }
 
+.prompt-version {
+    background-color: #f3f4f6;
+    color: #374151;
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    border: 1px solid #d1d5db;
+}
+
 .prompt-rating {
     color: #fbbf24;
     font-size: 0.75rem;
@@ -967,6 +977,249 @@ body {
 .btn-secondary:hover {
     background-color: #f3f4f6;
     border-color: #9ca3af;
+}
+
+/* Version History Styles */
+.version-history-content {
+    padding: 0 1.5rem 1.5rem;
+}
+
+.version-actions {
+    display: flex;
+    gap: 1rem;
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    background-color: #f8fafc;
+    border-radius: 0.5rem;
+    border: 1px solid #e2e8f0;
+}
+
+.version-list {
+    max-height: 400px;
+    overflow-y: auto;
+}
+
+.version-item {
+    display: flex;
+    align-items: center;
+    gap: 1rem;
+    padding: 1rem;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    margin-bottom: 0.75rem;
+    background: white;
+    cursor: pointer;
+    transition: all 0.2s ease;
+}
+
+.version-item:hover {
+    background-color: #f8fafc;
+    border-color: #667eea;
+}
+
+.version-item.selected {
+    background-color: #dbeafe;
+    border-color: #3b82f6;
+}
+
+.version-item.current {
+    background-color: #f0fdf4;
+    border-color: #10b981;
+}
+
+.version-checkbox {
+    width: 18px;
+    height: 18px;
+    margin: 0;
+}
+
+.version-details {
+    flex: 1;
+}
+
+.version-header {
+    display: flex;
+    justify-content: between;
+    align-items: center;
+    margin-bottom: 0.5rem;
+}
+
+.version-number {
+    font-weight: 600;
+    color: #374151;
+    font-size: 0.875rem;
+}
+
+.version-date {
+    color: #6b7280;
+    font-size: 0.75rem;
+}
+
+.version-changes {
+    display: flex;
+    gap: 0.375rem;
+    flex-wrap: wrap;
+    margin-top: 0.5rem;
+}
+
+.change-indicator {
+    padding: 0.125rem 0.375rem;
+    border-radius: 0.25rem;
+    font-size: 0.6875rem;
+    font-weight: 600;
+    background-color: #fef3c7;
+    color: #92400e;
+    border: 1px solid #fde68a;
+}
+
+.change-indicator.title {
+    background-color: #dbeafe;
+    color: #1d4ed8;
+    border-color: #93c5fd;
+}
+
+.change-indicator.content {
+    background-color: #ecfdf5;
+    color: #065f46;
+    border-color: #a7f3d0;
+}
+
+.change-indicator.category {
+    background-color: #ede9fe;
+    color: #5b21b6;
+    border-color: #c4b5fd;
+}
+
+.change-indicator.aiModel {
+    background-color: #fef2f2;
+    color: #991b1b;
+    border-color: #fecaca;
+}
+
+.change-indicator.tags {
+    background-color: #fff7ed;
+    color: #c2410c;
+    border-color: #fed7aa;
+}
+
+.change-indicator.restored {
+    background-color: #f0fdf4;
+    color: #166534;
+    border-color: #bbf7d0;
+}
+
+.version-preview {
+    margin-top: 0.5rem;
+    padding: 0.75rem;
+    background-color: #f8fafc;
+    border-radius: 0.375rem;
+    border: 1px solid #e2e8f0;
+}
+
+.version-title {
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 0.25rem;
+    font-size: 0.875rem;
+}
+
+.version-content-preview {
+    color: #6b7280;
+    font-size: 0.8125rem;
+    line-height: 1.4;
+    max-height: 60px;
+    overflow: hidden;
+    text-overflow: ellipsis;
+}
+
+/* Version Comparison Styles */
+.version-comparison-content {
+    padding: 0 1.5rem 1.5rem;
+}
+
+.comparison-header {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+    margin-bottom: 1.5rem;
+    padding: 1rem;
+    background-color: #f8fafc;
+    border-radius: 0.5rem;
+    border: 1px solid #e2e8f0;
+}
+
+.version-info h4 {
+    font-size: 1rem;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 0.25rem;
+}
+
+.comparison-grid {
+    display: grid;
+    grid-template-columns: 1fr 1fr;
+    gap: 2rem;
+}
+
+.version-content {
+    background: white;
+    border: 1px solid #e5e7eb;
+    border-radius: 0.5rem;
+    padding: 1rem;
+}
+
+.field-comparison {
+    margin-bottom: 1rem;
+    padding-bottom: 1rem;
+    border-bottom: 1px solid #f3f4f6;
+}
+
+.field-comparison:last-child {
+    border-bottom: none;
+    margin-bottom: 0;
+    padding-bottom: 0;
+}
+
+.field-comparison label {
+    display: block;
+    font-size: 0.875rem;
+    font-weight: 600;
+    color: #374151;
+    margin-bottom: 0.5rem;
+}
+
+.field-value {
+    font-size: 0.875rem;
+    color: #6b7280;
+    line-height: 1.5;
+    padding: 0.5rem;
+    background-color: #f8fafc;
+    border-radius: 0.25rem;
+    border: 1px solid #e2e8f0;
+    min-height: 40px;
+    max-height: 200px;
+    overflow-y: auto;
+}
+
+.field-value.changed {
+    background-color: #fef3c7;
+    border-color: #fde68a;
+    color: #92400e;
+}
+
+.field-value.tags {
+    display: flex;
+    flex-wrap: wrap;
+    gap: 0.25rem;
+}
+
+.field-value.tags .tag {
+    padding: 0.125rem 0.375rem;
+    background-color: #dbeafe;
+    color: #1d4ed8;
+    border-radius: 0.25rem;
+    font-size: 0.6875rem;
+    font-weight: 500;
 }
 
 /* Mobile Overlay */

@@ -201,10 +201,16 @@ class PromptManager {
         const stored = localStorage.getItem('aiPrompts');
         const prompts = stored ? JSON.parse(stored) : [];
         
-        // Add backward compatibility for prompts without usageHistory
+        // Add backward compatibility for prompts without usageHistory and versions
         prompts.forEach(prompt => {
             if (!prompt.usageHistory) {
                 prompt.usageHistory = [];
+            }
+            if (!prompt.versions) {
+                prompt.versions = [];
+            }
+            if (typeof prompt.version === 'undefined') {
+                prompt.version = 1;
             }
         });
         
@@ -276,6 +282,8 @@ class PromptManager {
             tags: promptData.tags || [],
             starRating: parseInt(promptData.starRating) || 0,
             usageHistory: [],
+            version: 1,
+            versions: [],
             createdAt: new Date().toISOString(),
             updatedAt: new Date().toISOString()
         };
@@ -295,12 +303,57 @@ class PromptManager {
     updatePrompt(id, promptData) {
         const index = this.prompts.findIndex(p => p.id === id);
         if (index !== -1) {
-            this.prompts[index] = {
-                ...this.prompts[index],
-                ...promptData,
-                starRating: parseInt(promptData.starRating) || this.prompts[index].starRating || 0,
-                updatedAt: new Date().toISOString()
-            };
+            const currentPrompt = this.prompts[index];
+            
+            // Check if any core content has changed
+            const hasChanges = 
+                promptData.title !== currentPrompt.title ||
+                promptData.content !== currentPrompt.content ||
+                promptData.category !== currentPrompt.category ||
+                promptData.subcategory !== currentPrompt.subcategory ||
+                promptData.aiModel !== currentPrompt.aiModel ||
+                JSON.stringify(promptData.tags) !== JSON.stringify(currentPrompt.tags);
+            
+            if (hasChanges) {
+                // Save current version to history
+                const versionSnapshot = {
+                    id: this.generateVersionId(),
+                    version: currentPrompt.version,
+                    title: currentPrompt.title,
+                    content: currentPrompt.content,
+                    category: currentPrompt.category,
+                    subcategory: currentPrompt.subcategory,
+                    aiModel: currentPrompt.aiModel,
+                    tags: [...currentPrompt.tags],
+                    starRating: currentPrompt.starRating,
+                    savedAt: currentPrompt.updatedAt,
+                    changes: this.generateChangeIndicators(currentPrompt, promptData)
+                };
+                
+                if (!currentPrompt.versions) {
+                    currentPrompt.versions = [];
+                }
+                currentPrompt.versions.push(versionSnapshot);
+                
+                // Increment version number
+                const newVersion = (currentPrompt.version || 1) + 1;
+                
+                this.prompts[index] = {
+                    ...currentPrompt,
+                    ...promptData,
+                    version: newVersion,
+                    starRating: parseInt(promptData.starRating) || currentPrompt.starRating || 0,
+                    updatedAt: new Date().toISOString()
+                };
+            } else {
+                // Only update non-content fields (like star rating)
+                this.prompts[index] = {
+                    ...currentPrompt,
+                    starRating: parseInt(promptData.starRating) || currentPrompt.starRating || 0,
+                    updatedAt: new Date().toISOString()
+                };
+            }
+            
             this.savePrompts();
             
             // Refresh search manager if available
@@ -434,11 +487,159 @@ class PromptManager {
     generateUsageId() {
         return 'usage_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
     }
+
+    // Generate unique version ID
+    generateVersionId() {
+        return 'version_' + Date.now() + '_' + Math.random().toString(36).substr(2, 9);
+    }
+
+    // Generate change indicators between two prompt versions
+    generateChangeIndicators(oldPrompt, newPrompt) {
+        const changes = [];
+        
+        if (oldPrompt.title !== newPrompt.title) {
+            changes.push('title');
+        }
+        if (oldPrompt.content !== newPrompt.content) {
+            changes.push('content');
+        }
+        if (oldPrompt.category !== newPrompt.category) {
+            changes.push('category');
+        }
+        if (oldPrompt.subcategory !== newPrompt.subcategory) {
+            changes.push('subcategory');
+        }
+        if (oldPrompt.aiModel !== newPrompt.aiModel) {
+            changes.push('aiModel');
+        }
+        if (JSON.stringify(oldPrompt.tags) !== JSON.stringify(newPrompt.tags)) {
+            changes.push('tags');
+        }
+        
+        return changes;
+    }
+
+    // Get version history for a prompt
+    getVersionHistory(promptId) {
+        const prompt = this.getPrompt(promptId);
+        if (prompt && prompt.versions) {
+            return prompt.versions.sort((a, b) => new Date(b.savedAt) - new Date(a.savedAt));
+        }
+        return [];
+    }
+
+    // Get specific version of a prompt
+    getPromptVersion(promptId, versionId) {
+        const prompt = this.getPrompt(promptId);
+        if (prompt && prompt.versions) {
+            return prompt.versions.find(v => v.id === versionId) || null;
+        }
+        return null;
+    }
+
+    // Restore a previous version
+    restorePromptVersion(promptId, versionId) {
+        const prompt = this.getPrompt(promptId);
+        const version = this.getPromptVersion(promptId, versionId);
+        
+        if (prompt && version) {
+            // Save current state as a version before restoring
+            const currentVersionSnapshot = {
+                id: this.generateVersionId(),
+                version: prompt.version,
+                title: prompt.title,
+                content: prompt.content,
+                category: prompt.category,
+                subcategory: prompt.subcategory,
+                aiModel: prompt.aiModel,
+                tags: [...prompt.tags],
+                starRating: prompt.starRating,
+                savedAt: prompt.updatedAt,
+                changes: ['restored']
+            };
+            
+            prompt.versions.push(currentVersionSnapshot);
+            
+            // Restore the selected version
+            prompt.title = version.title;
+            prompt.content = version.content;
+            prompt.category = version.category;
+            prompt.subcategory = version.subcategory;
+            prompt.aiModel = version.aiModel;
+            prompt.tags = [...version.tags];
+            prompt.starRating = version.starRating;
+            prompt.version = (prompt.version || 1) + 1;
+            prompt.updatedAt = new Date().toISOString();
+            
+            this.savePrompts();
+            
+            // Refresh search manager if available
+            if (window.searchFilterManager) {
+                window.searchFilterManager.refreshData();
+            }
+            
+            return prompt;
+        }
+        return null;
+    }
+
+    // Compare two versions
+    compareVersions(promptId, versionId1, versionId2) {
+        const prompt = this.getPrompt(promptId);
+        if (!prompt) return null;
+        
+        let version1, version2;
+        
+        // Handle current version comparison
+        if (versionId1 === 'current') {
+            version1 = prompt;
+        } else {
+            version1 = this.getPromptVersion(promptId, versionId1);
+        }
+        
+        if (versionId2 === 'current') {
+            version2 = prompt;
+        } else {
+            version2 = this.getPromptVersion(promptId, versionId2);
+        }
+        
+        if (!version1 || !version2) return null;
+        
+        const comparison = {
+            version1: {
+                id: versionId1,
+                version: version1.version || 'current',
+                title: version1.title,
+                content: version1.content,
+                category: version1.category,
+                subcategory: version1.subcategory,
+                aiModel: version1.aiModel,
+                tags: version1.tags,
+                date: version1.savedAt || version1.updatedAt
+            },
+            version2: {
+                id: versionId2,
+                version: version2.version || 'current',
+                title: version2.title,
+                content: version2.content,
+                category: version2.category,
+                subcategory: version2.subcategory,
+                aiModel: version2.aiModel,
+                tags: version2.tags,
+                date: version2.savedAt || version2.updatedAt
+            },
+            differences: this.generateChangeIndicators(version1, version2)
+        };
+        
+        return comparison;
+    }
 }
 
 // Global manager instances
 let categoryManager;
 let promptManager;
+let currentVersionHistoryPromptId = null;
+let selectedVersions = [];
 
 document.addEventListener('DOMContentLoaded', function() {
     // Initialize managers
@@ -470,6 +671,9 @@ function initializeApp() {
     
     // Usage modal event listeners
     initializeUsageModal();
+    
+    // Version history modal event listeners
+    initializeVersionHistoryModal();
     
     // Ensure initial display shows all prompts
     if (searchFilterManager) {
@@ -1626,8 +1830,15 @@ function createPromptCard(prompt) {
     dateSpan.className = 'prompt-date';
     dateSpan.textContent = createdDate;
     
+    // Add version number
+    const versionSpan = document.createElement('span');
+    versionSpan.className = 'prompt-version';
+    versionSpan.textContent = `v${prompt.version || 1}`;
+    versionSpan.title = `Version ${prompt.version || 1}`;
+    
     meta.appendChild(modelBadge);
     meta.appendChild(dateSpan);
+    meta.appendChild(versionSpan);
     header.appendChild(title);
     header.appendChild(meta);
 
@@ -1767,10 +1978,18 @@ function createPromptCard(prompt) {
     logUsageBtn.onclick = () => showUsageModal(prompt.id);
     logUsageBtn.innerHTML = '<span class="btn-icon">📊</span> Log Usage';
     
+    // Add Version History button
+    const versionHistoryBtn = document.createElement('button');
+    versionHistoryBtn.className = 'btn-secondary version-history-btn';
+    versionHistoryBtn.title = 'View Version History';
+    versionHistoryBtn.onclick = () => showVersionHistoryModal(prompt.id);
+    versionHistoryBtn.innerHTML = '<span class="btn-icon">🕒</span> History';
+    
     actionsDiv.appendChild(editBtn);
     actionsDiv.appendChild(deleteBtn);
     actionsDiv.appendChild(copyBtn);
     actionsDiv.appendChild(logUsageBtn);
+    actionsDiv.appendChild(versionHistoryBtn);
     
     // Assemble the card
     card.appendChild(header);
@@ -2462,6 +2681,358 @@ function hideUsageModal() {
     });
     
     currentUsagePromptId = null;
+}
+
+// Version History Modal Functions
+function initializeVersionHistoryModal() {
+    // Close button events
+    const versionHistoryClose = document.getElementById('versionHistoryModalClose');
+    const versionComparisonClose = document.getElementById('versionComparisonModalClose');
+    
+    if (versionHistoryClose) {
+        versionHistoryClose.addEventListener('click', hideVersionHistoryModal);
+    }
+    
+    if (versionComparisonClose) {
+        versionComparisonClose.addEventListener('click', hideVersionComparisonModal);
+    }
+    
+    // Action button events
+    const compareBtn = document.getElementById('compareVersionsBtn');
+    const restoreBtn = document.getElementById('restoreVersionBtn');
+    
+    if (compareBtn) {
+        compareBtn.addEventListener('click', compareSelectedVersions);
+    }
+    
+    if (restoreBtn) {
+        restoreBtn.addEventListener('click', restoreSelectedVersion);
+    }
+    
+    // Close modal when clicking overlay
+    const modalOverlay = document.getElementById('modalOverlay');
+    if (modalOverlay) {
+        modalOverlay.addEventListener('click', (e) => {
+            if (e.target === modalOverlay) {
+                const versionHistoryModal = document.getElementById('versionHistoryModal');
+                const versionComparisonModal = document.getElementById('versionComparisonModal');
+                
+                if (versionHistoryModal && versionHistoryModal.classList.contains('show')) {
+                    hideVersionHistoryModal();
+                }
+                
+                if (versionComparisonModal && versionComparisonModal.classList.contains('show')) {
+                    hideVersionComparisonModal();
+                }
+            }
+        });
+    }
+}
+
+function showVersionHistoryModal(promptId) {
+    const modal = document.getElementById('versionHistoryModal');
+    const modalOverlay = document.getElementById('modalOverlay');
+    const modalTitle = document.getElementById('versionHistoryModalTitle');
+    
+    if (!modal || !modalOverlay) return;
+    
+    currentVersionHistoryPromptId = promptId;
+    selectedVersions = [];
+    
+    const prompt = promptManager.getPrompt(promptId);
+    if (!prompt) return;
+    
+    modalTitle.textContent = `Version History - ${prompt.title}`;
+    
+    renderVersionHistory(promptId);
+    updateVersionActionButtons();
+    
+    // Show modal
+    modal.classList.add('show');
+    modalOverlay.classList.add('show');
+    document.body.style.overflow = 'hidden';
+}
+
+function hideVersionHistoryModal() {
+    const modal = document.getElementById('versionHistoryModal');
+    const modalOverlay = document.getElementById('modalOverlay');
+    
+    modal.classList.remove('show');
+    modalOverlay.classList.remove('show');
+    document.body.style.overflow = '';
+    
+    currentVersionHistoryPromptId = null;
+    selectedVersions = [];
+}
+
+function renderVersionHistory(promptId) {
+    const versionList = document.getElementById('versionList');
+    if (!versionList) return;
+    
+    const prompt = promptManager.getPrompt(promptId);
+    const versions = promptManager.getVersionHistory(promptId);
+    
+    versionList.innerHTML = '';
+    
+    // Add current version first
+    const currentVersionItem = createVersionItem(prompt, true);
+    versionList.appendChild(currentVersionItem);
+    
+    // Add historical versions
+    versions.forEach(version => {
+        const versionItem = createVersionItem(version, false);
+        versionList.appendChild(versionItem);
+    });
+}
+
+function createVersionItem(versionData, isCurrent = false) {
+    const item = document.createElement('div');
+    item.className = `version-item ${isCurrent ? 'current' : ''}`;
+    
+    const versionId = isCurrent ? 'current' : versionData.id;
+    item.dataset.versionId = versionId;
+    
+    // Checkbox for selection
+    const checkbox = document.createElement('input');
+    checkbox.type = 'checkbox';
+    checkbox.className = 'version-checkbox';
+    checkbox.addEventListener('change', (e) => handleVersionSelection(versionId, e.target.checked));
+    
+    // Version details
+    const details = document.createElement('div');
+    details.className = 'version-details';
+    
+    const header = document.createElement('div');
+    header.className = 'version-header';
+    
+    const versionNumber = document.createElement('span');
+    versionNumber.className = 'version-number';
+    versionNumber.textContent = isCurrent ? `v${versionData.version || 1} (Current)` : `v${versionData.version}`;
+    
+    const versionDate = document.createElement('span');
+    versionDate.className = 'version-date';
+    const date = new Date(isCurrent ? versionData.updatedAt : versionData.savedAt);
+    versionDate.textContent = date.toLocaleString();
+    
+    header.appendChild(versionNumber);
+    header.appendChild(versionDate);
+    details.appendChild(header);
+    
+    // Show changes if not current version
+    if (!isCurrent && versionData.changes && versionData.changes.length > 0) {
+        const changesDiv = document.createElement('div');
+        changesDiv.className = 'version-changes';
+        
+        versionData.changes.forEach(change => {
+            const changeSpan = document.createElement('span');
+            changeSpan.className = `change-indicator ${change}`;
+            changeSpan.textContent = change === 'restored' ? 'Restored' : 
+                                   change === 'aiModel' ? 'AI Model' :
+                                   change.charAt(0).toUpperCase() + change.slice(1);
+            changesDiv.appendChild(changeSpan);
+        });
+        
+        details.appendChild(changesDiv);
+    }
+    
+    // Version preview
+    const preview = document.createElement('div');
+    preview.className = 'version-preview';
+    
+    const title = document.createElement('div');
+    title.className = 'version-title';
+    title.textContent = versionData.title;
+    
+    const content = document.createElement('div');
+    content.className = 'version-content-preview';
+    content.textContent = versionData.content.length > 100 ? 
+                         versionData.content.substring(0, 100) + '...' : 
+                         versionData.content;
+    
+    preview.appendChild(title);
+    preview.appendChild(content);
+    details.appendChild(preview);
+    
+    item.appendChild(checkbox);
+    item.appendChild(details);
+    
+    return item;
+}
+
+function handleVersionSelection(versionId, isSelected) {
+    if (isSelected) {
+        if (!selectedVersions.includes(versionId)) {
+            selectedVersions.push(versionId);
+        }
+    } else {
+        selectedVersions = selectedVersions.filter(id => id !== versionId);
+    }
+    
+    updateVersionActionButtons();
+    updateVersionItemStyles();
+}
+
+function updateVersionActionButtons() {
+    const compareBtn = document.getElementById('compareVersionsBtn');
+    const restoreBtn = document.getElementById('restoreVersionBtn');
+    
+    if (compareBtn) {
+        compareBtn.disabled = selectedVersions.length !== 2;
+    }
+    
+    if (restoreBtn) {
+        restoreBtn.disabled = selectedVersions.length !== 1 || selectedVersions.includes('current');
+    }
+}
+
+function updateVersionItemStyles() {
+    const versionItems = document.querySelectorAll('.version-item');
+    versionItems.forEach(item => {
+        const versionId = item.dataset.versionId;
+        if (selectedVersions.includes(versionId)) {
+            item.classList.add('selected');
+        } else {
+            item.classList.remove('selected');
+        }
+    });
+}
+
+function compareSelectedVersions() {
+    if (selectedVersions.length !== 2) return;
+    
+    const comparison = promptManager.compareVersions(
+        currentVersionHistoryPromptId,
+        selectedVersions[0],
+        selectedVersions[1]
+    );
+    
+    if (comparison) {
+        showVersionComparisonModal(comparison);
+    }
+}
+
+function restoreSelectedVersion() {
+    if (selectedVersions.length !== 1 || selectedVersions.includes('current')) return;
+    
+    const versionId = selectedVersions[0];
+    
+    if (confirm('Are you sure you want to restore this version? This will create a new version with the restored content.')) {
+        const restoredPrompt = promptManager.restorePromptVersion(
+            currentVersionHistoryPromptId,
+            versionId
+        );
+        
+        if (restoredPrompt) {
+            // Refresh the display
+            renderVersionHistory(currentVersionHistoryPromptId);
+            selectedVersions = [];
+            updateVersionActionButtons();
+            
+            // Refresh the main prompts display
+            if (window.searchFilterManager) {
+                window.searchFilterManager.refreshData();
+                window.searchFilterManager.updateDisplay();
+            }
+            
+            alert('Version restored successfully!');
+        } else {
+            alert('Failed to restore version.');
+        }
+    }
+}
+
+function showVersionComparisonModal(comparison) {
+    const modal = document.getElementById('versionComparisonModal');
+    const modalOverlay = document.getElementById('modalOverlay');
+    
+    if (!modal || !modalOverlay) return;
+    
+    // Populate comparison data
+    document.getElementById('version1Title').textContent = `Version ${comparison.version1.version}`;
+    document.getElementById('version1Date').textContent = new Date(comparison.version1.date).toLocaleString();
+    document.getElementById('version2Title').textContent = `Version ${comparison.version2.version}`;
+    document.getElementById('version2Date').textContent = new Date(comparison.version2.date).toLocaleString();
+    
+    // Populate field comparisons
+    populateFieldComparison('Title', comparison.version1.title, comparison.version2.title, comparison.differences.includes('title'));
+    populateFieldComparison('Content', comparison.version1.content, comparison.version2.content, comparison.differences.includes('content'));
+    populateFieldComparison('Category', 
+        `${comparison.version1.category}${comparison.version1.subcategory ? ' / ' + comparison.version1.subcategory : ''}`,
+        `${comparison.version2.category}${comparison.version2.subcategory ? ' / ' + comparison.version2.subcategory : ''}`,
+        comparison.differences.includes('category') || comparison.differences.includes('subcategory')
+    );
+    populateFieldComparison('Model', comparison.version1.aiModel, comparison.version2.aiModel, comparison.differences.includes('aiModel'));
+    populateTagsComparison(comparison.version1.tags, comparison.version2.tags, comparison.differences.includes('tags'));
+    
+    // Show modal
+    modal.classList.add('show');
+    modalOverlay.classList.add('show');
+    document.body.style.overflow = 'hidden';
+}
+
+function hideVersionComparisonModal() {
+    const modal = document.getElementById('versionComparisonModal');
+    const modalOverlay = document.getElementById('modalOverlay');
+    
+    modal.classList.remove('show');
+    modalOverlay.classList.remove('show');
+    document.body.style.overflow = '';
+}
+
+function populateFieldComparison(fieldName, value1, value2, hasChanged) {
+    const field1 = document.getElementById(`version1${fieldName}Field`);
+    const field2 = document.getElementById(`version2${fieldName}Field`);
+    
+    if (field1) {
+        field1.textContent = value1 || 'No value';
+        if (hasChanged) field1.classList.add('changed');
+        else field1.classList.remove('changed');
+    }
+    
+    if (field2) {
+        field2.textContent = value2 || 'No value';
+        if (hasChanged) field2.classList.add('changed');
+        else field2.classList.remove('changed');
+    }
+}
+
+function populateTagsComparison(tags1, tags2, hasChanged) {
+    const field1 = document.getElementById('version1TagsField');
+    const field2 = document.getElementById('version2TagsField');
+    
+    if (field1) {
+        field1.innerHTML = '';
+        field1.className = 'field-value tags';
+        if (hasChanged) field1.classList.add('changed');
+        
+        if (tags1 && tags1.length > 0) {
+            tags1.forEach(tag => {
+                const tagSpan = document.createElement('span');
+                tagSpan.className = 'tag';
+                tagSpan.textContent = tag;
+                field1.appendChild(tagSpan);
+            });
+        } else {
+            field1.textContent = 'No tags';
+        }
+    }
+    
+    if (field2) {
+        field2.innerHTML = '';
+        field2.className = 'field-value tags';
+        if (hasChanged) field2.classList.add('changed');
+        
+        if (tags2 && tags2.length > 0) {
+            tags2.forEach(tag => {
+                const tagSpan = document.createElement('span');
+                tagSpan.className = 'tag';
+                tagSpan.textContent = tag;
+                field2.appendChild(tagSpan);
+            });
+        } else {
+            field2.textContent = 'No tags';
+        }
+    }
 }
 
 function handleUsageFormSubmit(e) {
