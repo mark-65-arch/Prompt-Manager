@@ -217,9 +217,17 @@ class PromptManager {
         return prompts;
     }
 
-    // Save prompts to localStorage
+    // Save prompts to localStorage with error handling
     savePrompts() {
-        localStorage.setItem('aiPrompts', JSON.stringify(this.prompts));
+        try {
+            localStorage.setItem('aiPrompts', JSON.stringify(this.prompts));
+        } catch (error) {
+            console.error('Failed to save prompts to localStorage:', error);
+            if (error.name === 'QuotaExceededError') {
+                alert('Storage quota exceeded. Consider removing some old prompts or version history to free up space.');
+            }
+            throw error;
+        }
     }
 
     // Initialize default prompts if none exist
@@ -334,6 +342,11 @@ class PromptManager {
                     currentPrompt.versions = [];
                 }
                 currentPrompt.versions.push(versionSnapshot);
+                
+                // Cap version history to prevent storage bloat (keep last 10 versions)
+                if (currentPrompt.versions.length > 10) {
+                    currentPrompt.versions = currentPrompt.versions.slice(-10);
+                }
                 
                 // Increment version number
                 const newVersion = (currentPrompt.version || 1) + 1;
@@ -1880,17 +1893,25 @@ function createPromptCard(prompt) {
 
         const usageCountStat = document.createElement('div');
         usageCountStat.className = 'usage-stat';
-        usageCountStat.innerHTML = `
-            <span class="usage-stat-value">${usageStats.usageCount}</span>
-            <span class="usage-stat-label">Uses</span>
-        `;
+        const usageValue = document.createElement('span');
+        usageValue.className = 'usage-stat-value';
+        usageValue.textContent = usageStats.usageCount;
+        const usageLabel = document.createElement('span');
+        usageLabel.className = 'usage-stat-label';
+        usageLabel.textContent = 'Uses';
+        usageCountStat.appendChild(usageValue);
+        usageCountStat.appendChild(usageLabel);
 
         const avgEffectiveness = document.createElement('div');
         avgEffectiveness.className = 'usage-stat';
-        avgEffectiveness.innerHTML = `
-            <span class="usage-stat-value">${usageStats.avgEffectiveness}⭐</span>
-            <span class="usage-stat-label">Avg Rating</span>
-        `;
+        const effValue = document.createElement('span');
+        effValue.className = 'usage-stat-value';
+        effValue.textContent = `${usageStats.avgEffectiveness}⭐`;
+        const effLabel = document.createElement('span');
+        effLabel.className = 'usage-stat-label';
+        effLabel.textContent = 'Avg Rating';
+        avgEffectiveness.appendChild(effValue);
+        avgEffectiveness.appendChild(effLabel);
 
         usageStatsDiv.appendChild(usageCountStat);
         usageStatsDiv.appendChild(avgEffectiveness);
@@ -1899,7 +1920,10 @@ function createPromptCard(prompt) {
             const lastUsedDiv = document.createElement('div');
             lastUsedDiv.className = 'usage-history-summary';
             const lastUsedDate = new Date(usageStats.lastUsed).toLocaleDateString();
-            lastUsedDiv.innerHTML = `<span class="last-used">Last used: ${lastUsedDate}</span>`;
+            const lastUsedSpan = document.createElement('span');
+            lastUsedSpan.className = 'last-used';
+            lastUsedSpan.textContent = `Last used: ${lastUsedDate}`;
+            lastUsedDiv.appendChild(lastUsedSpan);
             ratingDiv.appendChild(lastUsedDiv);
         }
         
@@ -3001,7 +3025,10 @@ function populateTagsComparison(tags1, tags2, hasChanged) {
     const field2 = document.getElementById('version2TagsField');
     
     if (field1) {
-        field1.innerHTML = '';
+        // Clear and reset classes
+        while (field1.firstChild) {
+            field1.removeChild(field1.firstChild);
+        }
         field1.className = 'field-value tags';
         if (hasChanged) field1.classList.add('changed');
         
@@ -3009,7 +3036,7 @@ function populateTagsComparison(tags1, tags2, hasChanged) {
             tags1.forEach(tag => {
                 const tagSpan = document.createElement('span');
                 tagSpan.className = 'tag';
-                tagSpan.textContent = tag;
+                tagSpan.textContent = tag; // Safe text insertion
                 field1.appendChild(tagSpan);
             });
         } else {
@@ -3018,7 +3045,10 @@ function populateTagsComparison(tags1, tags2, hasChanged) {
     }
     
     if (field2) {
-        field2.innerHTML = '';
+        // Clear and reset classes
+        while (field2.firstChild) {
+            field2.removeChild(field2.firstChild);
+        }
         field2.className = 'field-value tags';
         if (hasChanged) field2.classList.add('changed');
         
@@ -3026,7 +3056,7 @@ function populateTagsComparison(tags1, tags2, hasChanged) {
             tags2.forEach(tag => {
                 const tagSpan = document.createElement('span');
                 tagSpan.className = 'tag';
-                tagSpan.textContent = tag;
+                tagSpan.textContent = tag; // Safe text insertion
                 field2.appendChild(tagSpan);
             });
         } else {
