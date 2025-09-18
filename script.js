@@ -688,6 +688,9 @@ function initializeApp() {
     // Version history modal event listeners
     initializeVersionHistoryModal();
     
+    // Initialize data management system
+    initializeDataManagement();
+    
     // Ensure initial display shows all prompts
     if (searchFilterManager) {
         searchFilterManager.updateDisplay();
@@ -3328,6 +3331,712 @@ function debounce(func, wait) {
     };
 }
 
+// Data Management System
+class DataManager {
+    constructor(promptManager, categoryManager) {
+        this.promptManager = promptManager;
+        this.categoryManager = categoryManager;
+    }
+
+    // Export all data to JSON file with timestamp
+    exportData() {
+        try {
+            const exportData = {
+                timestamp: new Date().toISOString(),
+                version: '1.0.0',
+                data: {
+                    prompts: this.promptManager.getAllPrompts(),
+                    categories: this.categoryManager.getAllCategories(),
+                    exportInfo: {
+                        totalPrompts: this.promptManager.getAllPrompts().length,
+                        totalCategories: Object.keys(this.categoryManager.getAllCategories()).length - 1, // Exclude 'all' category
+                        exportDate: new Date().toISOString()
+                    }
+                }
+            };
+
+            // Create filename with timestamp
+            const now = new Date();
+            const timestamp = now.toISOString().slice(0, 19).replace(/:/g, '-').replace('T', '_');
+            const filename = `ai-prompts-export_${timestamp}.json`;
+
+            // Download the file
+            this.downloadJSON(exportData, filename);
+            
+            return { success: true, filename, totalPrompts: exportData.data.exportInfo.totalPrompts };
+        } catch (error) {
+            console.error('Export failed:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // Import data from JSON file
+    async importData(file, mode = 'merge') {
+        try {
+            const fileContent = await this.readFile(file);
+            const importData = JSON.parse(fileContent);
+
+            // Validate import data structure
+            const validation = this.validateImportData(importData);
+            if (!validation.isValid) {
+                return { success: false, error: `Invalid file format: ${validation.error}` };
+            }
+
+            let importResults = {
+                success: true,
+                promptsAdded: 0,
+                promptsUpdated: 0,
+                categoriesAdded: 0,
+                categoriesSkipped: 0,
+                mode: mode
+            };
+
+            // Handle categories first
+            if (importData.data.categories) {
+                importResults = this.importCategories(importData.data.categories, mode, importResults);
+            }
+
+            // Handle prompts
+            if (importData.data.prompts) {
+                importResults = this.importPrompts(importData.data.prompts, mode, importResults);
+            }
+
+            // Refresh the UI
+            if (window.searchFilterManager) {
+                window.searchFilterManager.refreshData();
+            }
+            renderCategoryTree();
+            refreshCurrentCategoryDisplay();
+
+            return importResults;
+        } catch (error) {
+            console.error('Import failed:', error);
+            return { success: false, error: error.message };
+        }
+    }
+
+    // Import categories
+    importCategories(categories, mode, results) {
+        Object.entries(categories).forEach(([categoryId, category]) => {
+            // Skip the 'all' category as it's system-managed
+            if (categoryId === 'all') return;
+
+            const existingCategory = this.categoryManager.getCategory(categoryId);
+            
+            if (mode === 'replace' || !existingCategory) {
+                // Add or replace category
+                this.categoryManager.categories[categoryId] = {
+                    ...category,
+                    isDefault: false // Mark imported categories as non-default
+                };
+                results.categoriesAdded++;
+            } else {
+                results.categoriesSkipped++;
+            }
+        });
+
+        this.categoryManager.saveCategories();
+        return results;
+    }
+
+    // Import prompts
+    importPrompts(prompts, mode, results) {
+        prompts.forEach(prompt => {
+            const existingPrompt = this.promptManager.getPrompt(prompt.id);
+            
+            if (mode === 'replace' || !existingPrompt) {
+                if (existingPrompt) {
+                    // Update existing prompt
+                    const index = this.promptManager.prompts.findIndex(p => p.id === prompt.id);
+                    this.promptManager.prompts[index] = {
+                        ...prompt,
+                        updatedAt: new Date().toISOString()
+                    };
+                    results.promptsUpdated++;
+                } else {
+                    // Add new prompt
+                    this.promptManager.prompts.push({
+                        ...prompt,
+                        id: prompt.id || this.promptManager.generateId() // Ensure ID exists
+                    });
+                    results.promptsAdded++;
+                }
+            } else if (mode === 'merge') {
+                // Generate new ID for duplicates in merge mode
+                const newPrompt = {
+                    ...prompt,
+                    id: this.promptManager.generateId(),
+                    title: `${prompt.title} (Imported)`,
+                    createdAt: new Date().toISOString(),
+                    updatedAt: new Date().toISOString()
+                };
+                this.promptManager.prompts.push(newPrompt);
+                results.promptsAdded++;
+            }
+        });
+
+        this.promptManager.savePrompts();
+        return results;
+    }
+
+    // Validate import data structure
+    validateImportData(data) {
+        try {
+            // Basic structure validation
+            if (!data || typeof data !== 'object') {
+                return { isValid: false, error: 'Invalid JSON structure - not an object' };
+            }
+
+            // Check for required top-level structure
+            if (!data.data) {
+                return { isValid: false, error: 'Missing data section - invalid export format' };
+            }
+
+            // Version compatibility check
+            if (data.version && !this.isVersionCompatible(data.version)) {
+                return { isValid: false, error: `Incompatible version: ${data.version}. Expected 1.0.0 or compatible.` };
+            }
+
+            // Validate prompts array
+            if (data.data.prompts && !Array.isArray(data.data.prompts)) {
+                return { isValid: false, error: 'Prompts must be an array' };
+            }
+
+            // Validate categories object
+            if (data.data.categories && typeof data.data.categories !== 'object') {
+                return { isValid: false, error: 'Categories must be an object' };
+            }
+
+            // Detailed prompt validation
+            if (data.data.prompts && data.data.prompts.length > 0) {
+                for (let i = 0; i < data.data.prompts.length; i++) {
+                    const prompt = data.data.prompts[i];
+                    if (!prompt.title || !prompt.content || !prompt.id) {
+                        return { isValid: false, error: `Prompt at index ${i} is missing required fields (title, content, id)` };
+                    }
+                    
+                    // Validate data types
+                    if (typeof prompt.title !== 'string' || typeof prompt.content !== 'string' || typeof prompt.id !== 'string') {
+                        return { isValid: false, error: `Prompt at index ${i} has invalid data types` };
+                    }
+                    
+                    // Validate tags array if present
+                    if (prompt.tags && !Array.isArray(prompt.tags)) {
+                        return { isValid: false, error: `Prompt at index ${i} has invalid tags format (must be array)` };
+                    }
+                }
+            }
+
+            // Detailed category validation
+            if (data.data.categories) {
+                for (const [categoryId, category] of Object.entries(data.data.categories)) {
+                    if (!category.name || typeof category.name !== 'string') {
+                        return { isValid: false, error: `Category ${categoryId} is missing or has invalid name` };
+                    }
+                    
+                    if (category.subcategories && typeof category.subcategories !== 'object') {
+                        return { isValid: false, error: `Category ${categoryId} has invalid subcategories format` };
+                    }
+                }
+            }
+
+            return { isValid: true };
+        } catch (error) {
+            return { isValid: false, error: `Validation error: ${error.message}` };
+        }
+    }
+
+    // Check version compatibility
+    isVersionCompatible(version) {
+        const supportedVersions = ['1.0.0'];
+        return supportedVersions.includes(version);
+    }
+
+    // Helper function to read file content
+    readFile(file) {
+        return new Promise((resolve, reject) => {
+            const reader = new FileReader();
+            reader.onload = (e) => resolve(e.target.result);
+            reader.onerror = (e) => reject(new Error('Failed to read file'));
+            reader.readAsText(file);
+        });
+    }
+
+    // Helper function to download JSON file
+    downloadJSON(data, filename) {
+        const jsonString = JSON.stringify(data, null, 2);
+        const blob = new Blob([jsonString], { type: 'application/json' });
+        const url = URL.createObjectURL(blob);
+
+        const downloadLink = document.createElement('a');
+        downloadLink.href = url;
+        downloadLink.download = filename;
+        downloadLink.style.display = 'none';
+        
+        document.body.appendChild(downloadLink);
+        downloadLink.click();
+        document.body.removeChild(downloadLink);
+        
+        // Clean up the URL object
+        URL.revokeObjectURL(url);
+    }
+
+    // Get data statistics
+    getDataStatistics() {
+        const prompts = this.promptManager.getAllPrompts();
+        const categories = this.categoryManager.getAllCategories();
+        
+        // Calculate category stats (excluding 'all' category)
+        const categoryCount = Object.keys(categories).length - 1;
+        let subcategoryCount = 0;
+        Object.values(categories).forEach(cat => {
+            if (cat.subcategories) {
+                subcategoryCount += Object.keys(cat.subcategories).length;
+            }
+        });
+
+        // Calculate prompt stats
+        const promptCount = prompts.length;
+        const avgRating = promptCount > 0 
+            ? prompts.reduce((sum, p) => sum + (p.starRating || 0), 0) / promptCount 
+            : 0;
+
+        // Calculate usage stats
+        let totalUsages = 0;
+        prompts.forEach(prompt => {
+            if (prompt.usageHistory) {
+                totalUsages += prompt.usageHistory.length;
+            }
+        });
+
+        // AI Model distribution
+        const modelDistribution = {};
+        prompts.forEach(prompt => {
+            const model = prompt.aiModel || 'Unknown';
+            modelDistribution[model] = (modelDistribution[model] || 0) + 1;
+        });
+
+        // Tag statistics
+        const tagCounts = {};
+        let totalTags = 0;
+        prompts.forEach(prompt => {
+            if (prompt.tags) {
+                prompt.tags.forEach(tag => {
+                    tagCounts[tag] = (tagCounts[tag] || 0) + 1;
+                    totalTags++;
+                });
+            }
+        });
+
+        const topTags = Object.entries(tagCounts)
+            .sort((a, b) => b[1] - a[1])
+            .slice(0, 10);
+
+        // Date statistics
+        const now = new Date();
+        const thisMonth = prompts.filter(p => {
+            const created = new Date(p.createdAt);
+            return created.getFullYear() === now.getFullYear() && 
+                   created.getMonth() === now.getMonth();
+        }).length;
+
+        const thisWeek = prompts.filter(p => {
+            const created = new Date(p.createdAt);
+            const weekAgo = new Date(now - 7 * 24 * 60 * 60 * 1000);
+            return created >= weekAgo;
+        }).length;
+
+        return {
+            categories: {
+                total: categoryCount,
+                subcategories: subcategoryCount
+            },
+            prompts: {
+                total: promptCount,
+                avgRating: Math.round(avgRating * 10) / 10,
+                thisMonth,
+                thisWeek
+            },
+            usage: {
+                totalUsages,
+                avgPerPrompt: promptCount > 0 ? Math.round((totalUsages / promptCount) * 10) / 10 : 0
+            },
+            models: modelDistribution,
+            tags: {
+                unique: Object.keys(tagCounts).length,
+                total: totalTags,
+                top: topTags
+            }
+        };
+    }
+}
+
+// Global data manager instance
+let dataManager;
+
+// Data Management UI Functions
+function showDataManagementModal() {
+    const modal = document.getElementById('dataManagementModal');
+    const modalOverlay = document.getElementById('modalOverlay');
+    
+    if (!modal || !modalOverlay) return;
+    
+    // Update statistics when opening modal
+    if (dataManager) {
+        updateDataStatistics();
+    }
+    
+    modal.classList.add('show');
+    modalOverlay.classList.add('show');
+    document.body.style.overflow = 'hidden';
+}
+
+function hideDataManagementModal() {
+    const modal = document.getElementById('dataManagementModal');
+    const modalOverlay = document.getElementById('modalOverlay');
+    
+    modal.classList.remove('show');
+    modalOverlay.classList.remove('show');
+    document.body.style.overflow = '';
+}
+
+function updateDataStatistics() {
+    if (!dataManager) return;
+    
+    const stats = dataManager.getDataStatistics();
+    
+    // Update basic statistics
+    const totalPromptsEl = document.getElementById('totalPrompts');
+    const totalCategoriesEl = document.getElementById('totalCategories');
+    const totalSubcategoriesEl = document.getElementById('totalSubcategories');
+    const avgRatingEl = document.getElementById('avgRating');
+    const totalUsagesEl = document.getElementById('totalUsages');
+    const avgUsagePerPromptEl = document.getElementById('avgUsagePerPrompt');
+    
+    if (totalPromptsEl) totalPromptsEl.textContent = stats.prompts.total;
+    if (totalCategoriesEl) totalCategoriesEl.textContent = stats.categories.total;
+    if (totalSubcategoriesEl) totalSubcategoriesEl.textContent = stats.categories.subcategories;
+    if (avgRatingEl) avgRatingEl.textContent = stats.prompts.avgRating;
+    if (totalUsagesEl) totalUsagesEl.textContent = stats.usage.totalUsages;
+    if (avgUsagePerPromptEl) avgUsagePerPromptEl.textContent = stats.usage.avgPerPrompt;
+    
+    // Update time-based statistics
+    const thisWeekEl = document.getElementById('promptsThisWeek');
+    const thisMonthEl = document.getElementById('promptsThisMonth');
+    
+    if (thisWeekEl) thisWeekEl.textContent = stats.prompts.thisWeek;
+    if (thisMonthEl) thisMonthEl.textContent = stats.prompts.thisMonth;
+    
+    // Update AI model distribution
+    updateModelDistribution(stats.models);
+    
+    // Update top tags
+    updateTopTags(stats.tags.top);
+}
+
+function updateModelDistribution(models) {
+    const modelDistributionEl = document.getElementById('modelDistribution');
+    if (!modelDistributionEl) return;
+    
+    modelDistributionEl.innerHTML = '';
+    
+    if (Object.keys(models).length === 0) {
+        modelDistributionEl.innerHTML = '<div class="no-data">No data available</div>';
+        return;
+    }
+    
+    Object.entries(models)
+        .sort((a, b) => b[1] - a[1])
+        .forEach(([model, count]) => {
+            const modelItem = document.createElement('div');
+            modelItem.className = 'model-stat-item';
+            modelItem.innerHTML = `
+                <span class="model-name">${model}</span>
+                <span class="model-count">${count}</span>
+            `;
+            modelDistributionEl.appendChild(modelItem);
+        });
+}
+
+function updateTopTags(topTags) {
+    const topTagsEl = document.getElementById('topTags');
+    if (!topTagsEl) return;
+    
+    topTagsEl.innerHTML = '';
+    
+    if (topTags.length === 0) {
+        topTagsEl.innerHTML = '<div class="no-data">No tags available</div>';
+        return;
+    }
+    
+    topTags.forEach(([tag, count]) => {
+        const tagItem = document.createElement('div');
+        tagItem.className = 'tag-stat-item';
+        tagItem.innerHTML = `
+            <span class="tag-name">${tag}</span>
+            <span class="tag-count">${count}</span>
+        `;
+        topTagsEl.appendChild(tagItem);
+    });
+}
+
+function exportData() {
+    if (!dataManager) return;
+    
+    const result = dataManager.exportData();
+    
+    if (result.success) {
+        const message = `Successfully exported ${result.totalPrompts} prompts to ${result.filename}`;
+        showNotification(message, 'success');
+    } else {
+        showNotification(`Export failed: ${result.error}`, 'error');
+    }
+}
+
+function triggerImportFile() {
+    const fileInput = document.getElementById('importFileInput');
+    if (fileInput) {
+        fileInput.click();
+    }
+}
+
+function handleImportFile(event) {
+    const file = event.target.files[0];
+    if (!file) return;
+    
+    // Validate file type
+    if (file.type !== 'application/json' && !file.name.toLowerCase().endsWith('.json')) {
+        showNotification('Please select a valid JSON file', 'error');
+        event.target.value = '';
+        return;
+    }
+    
+    // Validate file size (limit to 10MB)
+    const maxSize = 10 * 1024 * 1024; // 10MB in bytes
+    if (file.size > maxSize) {
+        showNotification('File size too large. Maximum allowed size is 10MB.', 'error');
+        event.target.value = '';
+        return;
+    }
+    
+    // Check if file is empty
+    if (file.size === 0) {
+        showNotification('File is empty. Please select a valid export file.', 'error');
+        event.target.value = '';
+        return;
+    }
+    
+    const mode = document.querySelector('input[name="importMode"]:checked')?.value || 'merge';
+    
+    if (!dataManager) {
+        showNotification('Data management system not initialized', 'error');
+        return;
+    }
+    
+    // Show loading state
+    const importBtn = document.getElementById('importDataBtn');
+    const originalText = importBtn.textContent;
+    importBtn.textContent = 'Importing...';
+    importBtn.disabled = true;
+    
+    // Create backup before import for safety
+    let backupData = null;
+    try {
+        backupData = {
+            prompts: dataManager.promptManager.getAllPrompts(),
+            categories: dataManager.categoryManager.getAllCategories()
+        };
+    } catch (error) {
+        console.warn('Could not create backup before import:', error);
+    }
+    
+    dataManager.importData(file, mode).then(result => {
+        if (result.success) {
+            let message = `Successfully imported data!\n`;
+            message += `Prompts added: ${result.promptsAdded}\n`;
+            if (result.promptsUpdated > 0) {
+                message += `Prompts updated: ${result.promptsUpdated}\n`;
+            }
+            message += `Categories added: ${result.categoriesAdded}`;
+            if (result.categoriesSkipped > 0) {
+                message += `\nCategories skipped: ${result.categoriesSkipped}`;
+            }
+            
+            showNotification(message, 'success');
+            updateDataStatistics(); // Refresh statistics
+        } else {
+            showNotification(`Import failed: ${result.error}`, 'error');
+            
+            // Attempt to restore backup on failure
+            if (backupData && mode === 'replace') {
+                try {
+                    dataManager.promptManager.prompts = backupData.prompts;
+                    dataManager.categoryManager.categories = backupData.categories;
+                    dataManager.promptManager.savePrompts();
+                    dataManager.categoryManager.saveCategories();
+                    console.log('Backup restored after import failure');
+                } catch (restoreError) {
+                    console.error('Failed to restore backup:', restoreError);
+                    showNotification('Import failed and backup restoration failed. Please refresh the page.', 'error');
+                }
+            }
+        }
+        
+        // Reset button
+        importBtn.textContent = originalText;
+        importBtn.disabled = false;
+        
+        // Clear file input
+        event.target.value = '';
+    }).catch(error => {
+        showNotification(`Import failed: ${error.message}`, 'error');
+        
+        // Attempt to restore backup on error
+        if (backupData && mode === 'replace') {
+            try {
+                dataManager.promptManager.prompts = backupData.prompts;
+                dataManager.categoryManager.categories = backupData.categories;
+                dataManager.promptManager.savePrompts();
+                dataManager.categoryManager.saveCategories();
+                console.log('Backup restored after import error');
+            } catch (restoreError) {
+                console.error('Failed to restore backup after error:', restoreError);
+            }
+        }
+        
+        importBtn.textContent = originalText;
+        importBtn.disabled = false;
+        event.target.value = '';
+    });
+}
+
+function showNotification(message, type = 'info') {
+    // Simple notification system
+    const notification = document.createElement('div');
+    notification.className = `notification notification-${type}`;
+    notification.innerHTML = `
+        <div class="notification-content">
+            <span class="notification-message">${message}</span>
+            <button class="notification-close" onclick="this.parentElement.parentElement.remove()">×</button>
+        </div>
+    `;
+    
+    document.body.appendChild(notification);
+    
+    // Auto-remove after 5 seconds
+    setTimeout(() => {
+        if (notification.parentElement) {
+            notification.remove();
+        }
+    }, 5000);
+    
+    // Add show class for animation
+    setTimeout(() => notification.classList.add('show'), 100);
+}
+
+// Tab switching functionality
+function initializeTabs() {
+    const tabButtons = document.querySelectorAll('.tab-btn');
+    const tabContents = document.querySelectorAll('.tab-content');
+    
+    tabButtons.forEach(button => {
+        button.addEventListener('click', () => {
+            const targetTab = button.dataset.tab;
+            
+            // Remove active class from all buttons and contents
+            tabButtons.forEach(btn => btn.classList.remove('active'));
+            tabContents.forEach(content => content.classList.remove('active'));
+            
+            // Add active class to clicked button and corresponding content
+            button.classList.add('active');
+            const targetContent = document.getElementById(targetTab + 'Tab');
+            if (targetContent) {
+                targetContent.classList.add('active');
+            }
+        });
+    });
+}
+
+// Initialize Data Management System
+function initializeDataManagement() {
+    if (!promptManager || !categoryManager) {
+        console.error('PromptManager or CategoryManager not initialized');
+        return;
+    }
+    
+    try {
+        dataManager = new DataManager(promptManager, categoryManager);
+        console.log('DataManager initialized successfully');
+        
+        // Initialize tab functionality
+        initializeTabs();
+        
+        // Initialize event listeners
+        const dataManagementBtn = document.getElementById('dataManagementBtn');
+        const dataManagementClose = document.getElementById('dataManagementModalClose');
+        const exportBtn = document.getElementById('exportDataBtn');
+        const importBtn = document.getElementById('importDataBtn');
+        const fileInput = document.getElementById('importFileInput');
+        
+        if (dataManagementBtn) {
+            dataManagementBtn.addEventListener('click', showDataManagementModal);
+            console.log('Data management button event listener added');
+        } else {
+            console.warn('Data management button not found');
+        }
+        
+        if (dataManagementClose) {
+            dataManagementClose.addEventListener('click', hideDataManagementModal);
+        }
+        
+        if (exportBtn) {
+            exportBtn.addEventListener('click', exportData);
+        } else {
+            console.warn('Export button not found');
+        }
+        
+        if (importBtn) {
+            importBtn.addEventListener('click', triggerImportFile);
+        } else {
+            console.warn('Import button not found');
+        }
+        
+        if (fileInput) {
+            fileInput.addEventListener('change', handleImportFile);
+        } else {
+            console.warn('File input not found');
+        }
+        
+        // Add modal overlay click handler
+        const modalOverlay = document.getElementById('modalOverlay');
+        if (modalOverlay) {
+            modalOverlay.addEventListener('click', (e) => {
+                if (e.target === modalOverlay) {
+                    const dataModal = document.getElementById('dataManagementModal');
+                    if (dataModal && dataModal.classList.contains('show')) {
+                        hideDataManagementModal();
+                    }
+                }
+            });
+        }
+        
+        // Add escape key handler
+        document.addEventListener('keydown', (e) => {
+            if (e.key === 'Escape') {
+                const dataModal = document.getElementById('dataManagementModal');
+                if (dataModal && dataModal.classList.contains('show')) {
+                    hideDataManagementModal();
+                }
+            }
+        });
+        
+    } catch (error) {
+        console.error('Failed to initialize data management:', error);
+        showNotification('Failed to initialize data management system', 'error');
+    }
+}
+
 // Export functions for global access if needed
 window.editPrompt = editPrompt;
 window.usePrompt = usePrompt;
+window.showDataManagementModal = showDataManagementModal;

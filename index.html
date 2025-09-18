@@ -39,7 +39,12 @@
         <main class="main-content">
             <div class="content-header">
                 <h2 class="content-title">All Prompts</h2>
-                <button class="add-prompt-btn">+ Add New Prompt</button>
+                <div class="header-actions">
+                    <button class="data-management-btn" id="dataManagementBtn" title="Data Management">
+                        📊 Data
+                    </button>
+                    <button class="add-prompt-btn">+ Add New Prompt</button>
+                </div>
             </div>
             
             <div class="search-filter-section">
@@ -368,6 +373,152 @@
                                 <label>Tags:</label>
                                 <div class="field-value" id="version2TagsField"></div>
                             </div>
+                        </div>
+                    </div>
+                </div>
+            </div>
+        </div>
+    </div>
+
+    <!-- Data Management Modal -->
+    <div class="modal" id="dataManagementModal">
+        <div class="modal-content extra-large">
+            <div class="modal-header">
+                <h3 class="modal-title">Data Management & Statistics</h3>
+                <button class="modal-close" id="dataManagementModalClose">&times;</button>
+            </div>
+            <div class="modal-body">
+                <!-- Tab Navigation -->
+                <div class="tab-navigation">
+                    <button class="tab-btn active" data-tab="statistics">📊 Statistics</button>
+                    <button class="tab-btn" data-tab="export">📤 Export</button>
+                    <button class="tab-btn" data-tab="import">📥 Import</button>
+                </div>
+
+                <!-- Statistics Tab -->
+                <div class="tab-content active" id="statisticsTab">
+                    <div class="stats-dashboard">
+                        <div class="stats-grid">
+                            <div class="stat-card">
+                                <h4 class="stat-title">Prompts</h4>
+                                <div class="stat-value" id="totalPrompts">0</div>
+                                <div class="stat-details">
+                                    <span>This week: <span id="promptsThisWeek">0</span></span>
+                                    <span>This month: <span id="promptsThisMonth">0</span></span>
+                                </div>
+                            </div>
+                            
+                            <div class="stat-card">
+                                <h4 class="stat-title">Categories</h4>
+                                <div class="stat-value" id="totalCategories">0</div>
+                                <div class="stat-details">
+                                    <span>Subcategories: <span id="totalSubcategories">0</span></span>
+                                </div>
+                            </div>
+                            
+                            <div class="stat-card">
+                                <h4 class="stat-title">Average Rating</h4>
+                                <div class="stat-value" id="avgRating">0</div>
+                                <div class="stat-details">
+                                    <span>⭐ stars</span>
+                                </div>
+                            </div>
+                            
+                            <div class="stat-card">
+                                <h4 class="stat-title">Usage</h4>
+                                <div class="stat-value" id="totalUsages">0</div>
+                                <div class="stat-details">
+                                    <span>Avg per prompt: <span id="avgUsagePerPrompt">0</span></span>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="stats-charts">
+                            <div class="chart-section">
+                                <h4 class="chart-title">AI Model Distribution</h4>
+                                <div class="model-distribution" id="modelDistribution">
+                                    <!-- Model stats will be populated here -->
+                                </div>
+                            </div>
+                            
+                            <div class="chart-section">
+                                <h4 class="chart-title">Top Tags</h4>
+                                <div class="top-tags" id="topTags">
+                                    <!-- Top tags will be populated here -->
+                                </div>
+                            </div>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Export Tab -->
+                <div class="tab-content" id="exportTab">
+                    <div class="export-section">
+                        <div class="export-info">
+                            <h4>📤 Export Your Data</h4>
+                            <p>Download all your prompts, categories, and usage history as a JSON file. The filename will include a timestamp for easy identification.</p>
+                            
+                            <div class="export-features">
+                                <h5>What's included:</h5>
+                                <ul>
+                                    <li>✅ All prompts with content and metadata</li>
+                                    <li>✅ Categories and subcategories</li>
+                                    <li>✅ Usage history and version tracking</li>
+                                    <li>✅ Ratings and tags</li>
+                                    <li>✅ Creation and modification dates</li>
+                                </ul>
+                            </div>
+                        </div>
+                        
+                        <div class="export-actions">
+                            <button class="btn-primary export-btn" id="exportDataBtn">
+                                📁 Export Data
+                            </button>
+                        </div>
+                    </div>
+                </div>
+
+                <!-- Import Tab -->
+                <div class="tab-content" id="importTab">
+                    <div class="import-section">
+                        <div class="import-info">
+                            <h4>📥 Import Data</h4>
+                            <p>Import prompts and categories from a previously exported JSON file or compatible format.</p>
+                            
+                            <div class="import-modes">
+                                <h5>Import Mode:</h5>
+                                <div class="radio-group">
+                                    <label class="radio-option">
+                                        <input type="radio" name="importMode" value="merge" checked>
+                                        <span class="radio-label">
+                                            <strong>Merge:</strong> Add new data, keep duplicates with "(Imported)" suffix
+                                        </span>
+                                    </label>
+                                    <label class="radio-option">
+                                        <input type="radio" name="importMode" value="replace">
+                                        <span class="radio-label">
+                                            <strong>Replace:</strong> Overwrite existing data with matching IDs
+                                        </span>
+                                    </label>
+                                </div>
+                            </div>
+                        </div>
+                        
+                        <div class="import-actions">
+                            <input type="file" id="importFileInput" accept=".json" style="display: none;">
+                            <button class="btn-primary import-btn" id="importDataBtn">
+                                📂 Select File to Import
+                            </button>
+                        </div>
+                        
+                        <div class="import-warnings">
+                            <h5>⚠️ Important Notes:</h5>
+                            <ul>
+                                <li>Only import files you trust</li>
+                                <li>Create a backup export before importing</li>
+                                <li>Invalid data will be rejected with error messages</li>
+                                <li>Import progress will be shown with detailed results</li>
+                            </ul>
                         </div>
                     </div>
                 </div>
