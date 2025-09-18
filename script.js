@@ -6277,11 +6277,206 @@ class SettingsManager {
 
         try {
             const backups = await window.githubManager.getBackupFiles();
-            // TODO: Show backups in a modal or dedicated UI
             console.log('Available backups:', backups);
-            window.githubManager.showSuccessMessage(`Found ${backups.length} backup files.`);
+
+            if (backups.length === 0) {
+                window.githubManager.showSuccessMessage('No backups found. Create your first backup!');
+                return;
+            }
+
+            this.createBackupsModal(backups);
         } catch (error) {
             window.githubManager.showErrorMessage(`❌ Failed to load backups: ${error.message}`);
+        }
+    }
+
+    createBackupsModal(backups) {
+        // Remove existing modal if any
+        const existingModal = document.getElementById('backupsModal');
+        if (existingModal) {
+            existingModal.remove();
+        }
+
+        // Create modal
+        const modal = document.createElement('div');
+        modal.id = 'backupsModal';
+        modal.className = 'backup-modal';
+        modal.innerHTML = `
+            <div class="backup-modal-content">
+                <div class="backup-modal-header">
+                    <h3>Available Backups</h3>
+                    <button class="backup-modal-close" onclick="this.closest('.backup-modal').remove()">×</button>
+                </div>
+                <div class="backup-modal-body">
+                    <div class="backup-list">
+                        ${backups.map(backup => `
+                            <div class="backup-item" data-filename="${backup.name}">
+                                <div class="backup-info">
+                                    <div class="backup-name">${backup.name}</div>
+                                    <div class="backup-details">
+                                        <span class="backup-date">Date: ${backup.lastModified}</span>
+                                        <span class="backup-size">Size: ${(backup.size / 1024).toFixed(1)} KB</span>
+                                    </div>
+                                </div>
+                                <div class="backup-actions">
+                                    <button class="backup-action-btn restore-btn" onclick="window.settingsManager.restoreBackup('${backup.name}')">
+                                        Restore
+                                    </button>
+                                    <a href="${backup.downloadUrl}" target="_blank" class="backup-action-btn download-btn">
+                                        Download
+                                    </a>
+                                </div>
+                            </div>
+                        `).join('')}
+                    </div>
+                </div>
+                <div class="backup-modal-footer">
+                    <button class="backup-modal-btn secondary" onclick="this.closest('.backup-modal').remove()">Close</button>
+                </div>
+            </div>
+        `;
+
+        // Add styles
+        if (!document.getElementById('backupModalStyles')) {
+            const styles = document.createElement('style');
+            styles.id = 'backupModalStyles';
+            styles.textContent = `
+                .backup-modal {
+                    position: fixed;
+                    top: 0;
+                    left: 0;
+                    width: 100%;
+                    height: 100%;
+                    background: rgba(0, 0, 0, 0.5);
+                    display: flex;
+                    justify-content: center;
+                    align-items: center;
+                    z-index: 10000;
+                }
+                .backup-modal-content {
+                    background: var(--card-bg, #fff);
+                    border-radius: 8px;
+                    width: 90%;
+                    max-width: 600px;
+                    max-height: 80vh;
+                    overflow: hidden;
+                    box-shadow: 0 4px 20px rgba(0, 0, 0, 0.15);
+                }
+                .backup-modal-header {
+                    padding: 20px;
+                    border-bottom: 1px solid var(--border-color, #ddd);
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                }
+                .backup-modal-header h3 {
+                    margin: 0;
+                    color: var(--text-color, #333);
+                }
+                .backup-modal-close {
+                    background: none;
+                    border: none;
+                    font-size: 24px;
+                    cursor: pointer;
+                    color: var(--text-color, #666);
+                }
+                .backup-modal-body {
+                    padding: 20px;
+                    max-height: 400px;
+                    overflow-y: auto;
+                }
+                .backup-item {
+                    display: flex;
+                    justify-content: space-between;
+                    align-items: center;
+                    padding: 15px;
+                    border: 1px solid var(--border-color, #ddd);
+                    border-radius: 6px;
+                    margin-bottom: 10px;
+                    background: var(--input-bg, #f9f9f9);
+                }
+                .backup-info {
+                    flex: 1;
+                }
+                .backup-name {
+                    font-weight: 500;
+                    color: var(--text-color, #333);
+                    margin-bottom: 5px;
+                }
+                .backup-details {
+                    font-size: 0.9em;
+                    color: var(--text-secondary, #666);
+                }
+                .backup-details span {
+                    margin-right: 15px;
+                }
+                .backup-actions {
+                    display: flex;
+                    gap: 10px;
+                }
+                .backup-action-btn {
+                    padding: 6px 12px;
+                    border: none;
+                    border-radius: 4px;
+                    cursor: pointer;
+                    text-decoration: none;
+                    font-size: 0.9em;
+                    transition: background-color 0.2s;
+                }
+                .restore-btn {
+                    background: var(--primary-color, #007bff);
+                    color: white;
+                }
+                .restore-btn:hover {
+                    background: var(--primary-hover, #0056b3);
+                }
+                .download-btn {
+                    background: var(--secondary-color, #6c757d);
+                    color: white;
+                }
+                .download-btn:hover {
+                    background: var(--secondary-hover, #545b62);
+                }
+                .backup-modal-footer {
+                    padding: 20px;
+                    border-top: 1px solid var(--border-color, #ddd);
+                    text-align: right;
+                }
+                .backup-modal-btn {
+                    padding: 8px 16px;
+                    border: 1px solid var(--border-color, #ddd);
+                    border-radius: 4px;
+                    cursor: pointer;
+                    background: var(--button-bg, #f8f9fa);
+                    color: var(--text-color, #333);
+                }
+            `;
+            document.head.appendChild(styles);
+        }
+
+        document.body.appendChild(modal);
+    }
+
+    async restoreBackup(fileName) {
+        if (!window.githubManager) return;
+
+        if (!confirm(`Are you sure you want to restore the backup "${fileName}"? This will replace all your current data.`)) {
+            return;
+        }
+
+        try {
+            await window.githubManager.restoreFromGitHub(fileName);
+            window.githubManager.showSuccessMessage('✅ Backup restored successfully! The page will reload.');
+
+            // Close modal
+            document.getElementById('backupsModal')?.remove();
+
+            // Reload page after short delay
+            setTimeout(() => {
+                window.location.reload();
+            }, 2000);
+        } catch (error) {
+            window.githubManager.showErrorMessage(`❌ Restore failed: ${error.message}`);
         }
     }
 
