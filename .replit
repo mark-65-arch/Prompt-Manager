@@ -1,4 +1,4 @@
-modules = ["nodejs-20", "web", "python-3.11"]
+modules = ["nodejs-20", "web"]
 [nix]
 channel = "stable-25_05"
 
@@ -41,6 +41,10 @@ externalPort = 4200
 [[ports]]
 localPort = 40933
 externalPort = 3000
+
+[[ports]]
+localPort = 42923
+externalPort = 5000
 
 [[ports]]
 localPort = 45399
