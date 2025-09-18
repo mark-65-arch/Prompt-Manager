@@ -783,6 +783,10 @@ document.addEventListener('DOMContentLoaded', function() {
     themeManager = new ThemeManager();
     window.themeManager = themeManager; // Make globally accessible
     
+    // Initialize loading manager
+    loadingManager = new LoadingManager();
+    window.loadingManager = loadingManager; // Make globally accessible
+    
     // Initialize other managers
     categoryManager = new CategoryManager();
     promptManager = new PromptManager();
@@ -959,6 +963,184 @@ function highlightPromptCard(promptId) {
         }, 2000);
     }
 }
+
+// Loading States Management
+class LoadingManager {
+    constructor() {
+        this.activeLoadings = new Set();
+    }
+
+    showContentLoading(message = 'Loading prompts...') {
+        const contentLoading = document.getElementById('contentLoading');
+        const promptsGrid = document.querySelector('.prompts-grid');
+        const loadingText = contentLoading?.querySelector('.loading-text');
+        
+        if (contentLoading && loadingText) {
+            loadingText.textContent = message;
+            contentLoading.style.display = 'flex';
+        }
+        
+        if (promptsGrid) {
+            promptsGrid.style.display = 'none';
+        }
+    }
+
+    hideContentLoading() {
+        const contentLoading = document.getElementById('contentLoading');
+        const promptsGrid = document.querySelector('.prompts-grid');
+        
+        if (contentLoading) {
+            contentLoading.style.display = 'none';
+        }
+        
+        if (promptsGrid) {
+            promptsGrid.style.display = 'grid';
+        }
+    }
+
+    showSearchLoading() {
+        const searchBtn = document.getElementById('searchBtn');
+        if (searchBtn && !searchBtn.classList.contains('loading')) {
+            searchBtn.classList.add('loading');
+            searchBtn.disabled = true;
+        }
+    }
+
+    hideSearchLoading() {
+        const searchBtn = document.getElementById('searchBtn');
+        if (searchBtn) {
+            searchBtn.classList.remove('loading');
+            searchBtn.disabled = false;
+        }
+    }
+
+    showButtonLoading(buttonId, loadingText = null) {
+        const button = document.getElementById(buttonId);
+        if (button && !button.classList.contains('btn-loading')) {
+            // Store original text
+            const originalText = button.textContent;
+            button.dataset.originalText = originalText;
+            
+            // Add loading state
+            button.classList.add('btn-loading');
+            button.disabled = true;
+            
+            // Create spinner and text elements if they don't exist
+            let btnText = button.querySelector('.btn-text');
+            let btnSpinner = button.querySelector('.btn-spinner');
+            
+            if (!btnText) {
+                btnText = document.createElement('span');
+                btnText.className = 'btn-text';
+                btnText.textContent = loadingText || originalText;
+                button.innerHTML = '';
+                button.appendChild(btnText);
+            }
+            
+            if (!btnSpinner) {
+                btnSpinner = document.createElement('div');
+                btnSpinner.className = 'btn-spinner';
+                btnSpinner.innerHTML = '<div class="spinner"></div>';
+                button.appendChild(btnSpinner);
+            }
+            
+            this.activeLoadings.add(buttonId);
+        }
+    }
+
+    hideButtonLoading(buttonId) {
+        const button = document.getElementById(buttonId);
+        if (button && button.classList.contains('btn-loading')) {
+            button.classList.remove('btn-loading');
+            button.disabled = false;
+            
+            // Restore original text
+            const originalText = button.dataset.originalText;
+            if (originalText) {
+                button.textContent = originalText;
+                delete button.dataset.originalText;
+            }
+            
+            this.activeLoadings.delete(buttonId);
+        }
+    }
+
+    showDataOperationLoading(title = 'Processing...', description = 'Please wait while we process your data.') {
+        // Remove existing overlay if present
+        this.hideDataOperationLoading();
+        
+        const overlay = document.createElement('div');
+        overlay.className = 'data-loading-overlay';
+        overlay.id = 'dataLoadingOverlay';
+        
+        overlay.innerHTML = `
+            <div class="data-loading-content">
+                <div class="loading-spinner">
+                    <div class="spinner large"></div>
+                </div>
+                <h3 class="data-loading-title">${title}</h3>
+                <p class="data-loading-description">${description}</p>
+                <div class="progress-bar">
+                    <div class="progress-fill" style="width: 0%"></div>
+                </div>
+            </div>
+        `;
+        
+        document.body.appendChild(overlay);
+        document.body.style.overflow = 'hidden';
+        
+        // Animate progress bar
+        const progressFill = overlay.querySelector('.progress-fill');
+        let progress = 0;
+        const progressInterval = setInterval(() => {
+            progress += Math.random() * 15;
+            if (progress > 90) {
+                progress = 90;
+                clearInterval(progressInterval);
+            }
+            progressFill.style.width = `${progress}%`;
+        }, 200);
+        
+        overlay.dataset.progressInterval = progressInterval;
+    }
+
+    hideDataOperationLoading() {
+        const overlay = document.getElementById('dataLoadingOverlay');
+        if (overlay) {
+            // Clear progress interval
+            const progressInterval = overlay.dataset.progressInterval;
+            if (progressInterval) {
+                clearInterval(progressInterval);
+            }
+            
+            // Complete progress bar
+            const progressFill = overlay.querySelector('.progress-fill');
+            if (progressFill) {
+                progressFill.style.width = '100%';
+            }
+            
+            // Remove overlay after short delay
+            setTimeout(() => {
+                overlay.remove();
+                document.body.style.overflow = '';
+            }, 300);
+        }
+    }
+
+    // Debounced loading for search
+    debounceSearchLoading(callback, delay = 300) {
+        clearTimeout(this.searchDebounceTimer);
+        this.showSearchLoading();
+        
+        this.searchDebounceTimer = setTimeout(() => {
+            callback();
+            this.hideSearchLoading();
+        }, delay);
+    }
+}
+
+// Global loading manager instance
+let loadingManager;
 
 // Mobile Menu Functionality
 function initializeMobileMenu() {
@@ -2752,6 +2934,9 @@ function handlePromptFormSubmit(e) {
         return;
     }
     
+    // Show button loading
+    loadingManager.showButtonLoading('promptSubmitBtn', 'Saving...');
+    
     // Check for duplicates before saving
     const similarPrompts = findSimilarPrompts(
         formData.title, 
@@ -2769,11 +2954,16 @@ function handlePromptFormSubmit(e) {
                 promptManager.createPrompt(formData);
             }
             
+            // Hide button loading
+            loadingManager.hideButtonLoading('promptSubmitBtn');
+            
             // Hide modal and refresh display
             hidePromptModal();
             refreshCurrentCategoryDisplay();
             
         } catch (error) {
+            // Hide button loading on error
+            loadingManager.hideButtonLoading('promptSubmitBtn');
             console.error('Error saving prompt:', error);
             alert('Error saving prompt. Please try again.');
         }

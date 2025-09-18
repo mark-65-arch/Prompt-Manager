@@ -66,7 +66,12 @@
             <div class="search-filter-section">
                 <div class="search-bar">
                     <input type="text" placeholder="Search prompts by title, content, or tags..." class="search-input" id="searchInput">
-                    <button class="search-btn">Search</button>
+                    <button class="search-btn" id="searchBtn">
+                        <span class="search-btn-text">Search</span>
+                        <div class="search-spinner" id="searchSpinner" style="display: none;">
+                            <div class="spinner"></div>
+                        </div>
+                    </button>
                 </div>
 
                 <div class="filter-controls">
@@ -129,6 +134,13 @@
                 </div>
             </div>
 
+            <div class="content-loading" id="contentLoading" style="display: none;">
+                <div class="loading-spinner">
+                    <div class="spinner large"></div>
+                    <p class="loading-text">Loading prompts...</p>
+                </div>
+            </div>
+            
             <div class="prompts-grid">
                 <!-- Prompts will be dynamically populated here -->
             </div>
