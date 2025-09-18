@@ -1,4 +1,4 @@
-modules = ["nodejs-20", "web"]
+modules = ["nodejs-20", "web", "python-3.11"]
 [nix]
 channel = "stable-25_05"
 
@@ -27,16 +27,12 @@ outputType = "webview"
 
 [[workflows.workflow.tasks]]
 task = "shell.exec"
-args = "npm run dev"
+args = "python -m http.server 5000 --bind 0.0.0.0"
 waitForPort = 5000
 
 [[ports]]
 localPort = 5000
 externalPort = 80
-
-[[ports]]
-localPort = 33525
-externalPort = 6000
 
 [[ports]]
 localPort = 35143
@@ -68,5 +64,5 @@ externalPort = 3002
 
 [deployment]
 deploymentTarget = "autoscale"
-run = ["npx", "http-server", ".", "-p", "5000", "-a", "0.0.0.0", "--cors"]
+run = ["python", "-m", "http.server", "5000", "--bind", "0.0.0.0"]
 build = ["npm", "run", "build"]
