@@ -472,9 +472,68 @@ class PromptManager {
         });
     }
 
-    // Get prompt by ID
-    getPrompt(id) {
-        return this.prompts.find(p => p.id === id) || null;
+    // Get prompt by ID and track recent access
+    getPrompt(id, trackAccess = false) {
+        const prompt = this.prompts.find(p => p.id === id) || null;
+        if (prompt && trackAccess) {
+            this.trackRecentAccess(id);
+        }
+        return prompt;
+    }
+    
+    // Track recent access for a prompt
+    trackRecentAccess(promptId) {
+        let recentPrompts = this.getRecentPrompts();
+        
+        // Remove existing entry if present
+        recentPrompts = recentPrompts.filter(item => item.promptId !== promptId);
+        
+        // Add to beginning with current timestamp
+        recentPrompts.unshift({
+            promptId: promptId,
+            accessedAt: new Date().toISOString()
+        });
+        
+        // Keep only the last 10 recent prompts
+        recentPrompts = recentPrompts.slice(0, 10);
+        
+        // Save to localStorage
+        localStorage.setItem('aiPromptManager_recent', JSON.stringify(recentPrompts));
+        
+        // Update UI if recent prompts section exists
+        this.updateRecentPromptsUI();
+    }
+    
+    // Get recent prompts list
+    getRecentPrompts() {
+        const stored = localStorage.getItem('aiPromptManager_recent');
+        return stored ? JSON.parse(stored) : [];
+    }
+    
+    // Get recent prompts with full data
+    getRecentPromptsData() {
+        const recent = this.getRecentPrompts();
+        const recentPrompts = [];
+        
+        for (const item of recent) {
+            const prompt = this.prompts.find(p => p.id === item.promptId);
+            if (prompt) {
+                recentPrompts.push({
+                    ...prompt,
+                    lastAccessed: item.accessedAt
+                });
+            }
+        }
+        
+        return recentPrompts;
+    }
+    
+    // Update recent prompts UI
+    updateRecentPromptsUI() {
+        const recentSection = document.getElementById('recentPromptsSection');
+        if (recentSection) {
+            renderRecentPrompts();
+        }
     }
 
     // Search prompts
@@ -742,6 +801,9 @@ function initializeApp() {
     // Mobile menu functionality
     initializeMobileMenu();
     
+    // Render recent prompts section
+    renderRecentPrompts();
+    
     // Render category tree
     renderCategoryTree();
     
@@ -775,6 +837,126 @@ function initializeApp() {
     // Ensure initial display shows all prompts
     if (window.searchFilterManager) {
         window.searchFilterManager.updateDisplay();
+    }
+}
+
+// Recent Prompts Functionality
+function renderRecentPrompts() {
+    const recentPromptsList = document.getElementById('recentPromptsList');
+    const recentPromptsSection = document.getElementById('recentPromptsSection');
+    
+    if (!recentPromptsList || !recentPromptsSection) return;
+    
+    const recentPrompts = promptManager.getRecentPromptsData();
+    
+    if (recentPrompts.length === 0) {
+        recentPromptsSection.style.display = 'none';
+        return;
+    }
+    
+    recentPromptsSection.style.display = 'block';
+    recentPromptsList.innerHTML = '';
+    
+    // Show up to 5 recent prompts
+    const promptsToShow = recentPrompts.slice(0, 5);
+    
+    promptsToShow.forEach(prompt => {
+        const recentItem = createRecentPromptItem(prompt);
+        recentPromptsList.appendChild(recentItem);
+    });
+}
+
+function createRecentPromptItem(prompt) {
+    const item = document.createElement('button');
+    item.className = 'recent-prompt-item';
+    item.title = `${prompt.title}\n${prompt.content.substring(0, 100)}${prompt.content.length > 100 ? '...' : ''}`;
+    
+    const timeAgo = formatTimeAgo(new Date(prompt.lastAccessed));
+    
+    item.innerHTML = `
+        <div class="recent-prompt-content">
+            <div class="recent-prompt-title">${prompt.title}</div>
+            <div class="recent-prompt-meta">${prompt.category}${prompt.subcategory ? ` → ${prompt.subcategory}` : ''}</div>
+        </div>
+        <div class="recent-prompt-time">${timeAgo}</div>
+    `;
+    
+    item.addEventListener('click', () => {
+        // Navigate to the prompt's category first
+        selectCategoryForPrompt(prompt);
+        
+        // Then highlight the prompt (if visible)
+        setTimeout(() => {
+            highlightPromptCard(prompt.id);
+        }, 100);
+        
+        // Track access
+        promptManager.trackRecentAccess(prompt.id);
+    });
+    
+    return item;
+}
+
+function formatTimeAgo(date) {
+    const now = new Date();
+    const diffInMs = now - date;
+    const diffInSeconds = Math.floor(diffInMs / 1000);
+    const diffInMinutes = Math.floor(diffInSeconds / 60);
+    const diffInHours = Math.floor(diffInMinutes / 60);
+    const diffInDays = Math.floor(diffInHours / 24);
+    
+    if (diffInSeconds < 60) {
+        return 'just now';
+    } else if (diffInMinutes < 60) {
+        return `${diffInMinutes}m ago`;
+    } else if (diffInHours < 24) {
+        return `${diffInHours}h ago`;
+    } else if (diffInDays < 7) {
+        return `${diffInDays}d ago`;
+    } else {
+        return date.toLocaleDateString();
+    }
+}
+
+function selectCategoryForPrompt(prompt) {
+    // Clear any existing selections
+    document.querySelectorAll('.category-main.active, .subcategory-item.active').forEach(el => {
+        el.classList.remove('active');
+    });
+    
+    // Find and select the appropriate category/subcategory
+    if (prompt.subcategory) {
+        const subcategoryElement = document.querySelector(
+            `.subcategory-item[data-subcategory-id="${prompt.subcategory}"]`
+        );
+        if (subcategoryElement) {
+            subcategoryElement.classList.add('active');
+            subcategoryElement.click();
+            return;
+        }
+    }
+    
+    // Fallback to main category
+    const categoryElement = document.querySelector(
+        `.category-main[data-category-id="${prompt.category}"]`
+    );
+    if (categoryElement) {
+        categoryElement.classList.add('active');
+        categoryElement.click();
+    }
+}
+
+function highlightPromptCard(promptId) {
+    const promptCard = document.querySelector(`[data-prompt-id="${promptId}"]`);
+    if (promptCard) {
+        promptCard.scrollIntoView({ behavior: 'smooth', block: 'center' });
+        promptCard.style.transform = 'scale(1.02)';
+        promptCard.style.boxShadow = '0 8px 25px rgba(102, 126, 234, 0.3)';
+        
+        setTimeout(() => {
+            promptCard.style.transform = '';
+            promptCard.style.boxShadow = '';
+        }, 2000);
     }
 }
 
@@ -3003,6 +3185,8 @@ function refreshCurrentCategoryDisplay() {
 
 // Prompt Action Handlers
 function editPrompt(promptId) {
+    // Track recent access when editing
+    promptManager.trackRecentAccess(promptId);
     showPromptModal('edit', promptId);
 }
 
@@ -3103,6 +3287,9 @@ function showUsageModal(promptId) {
     const form = document.getElementById('usageForm');
     
     if (!modal || !modalOverlay) return;
+    
+    // Track recent access when viewing usage
+    promptManager.trackRecentAccess(promptId);
     
     // Reset form
     form.reset();
@@ -3649,7 +3836,7 @@ function toggleReadMore(promptId) {
 
 // Enhanced copy functionality
 function copyPrompt(promptId) {
-    const prompt = promptManager.getPrompt(promptId);
+    const prompt = promptManager.getPrompt(promptId, true); // Track access
     if (!prompt) return;
     
     // Copy prompt content to clipboard
