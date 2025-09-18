@@ -59,7 +59,7 @@ class GitHubManager {
             const envInfo = await getEnvironmentInfo();
             
             if (!envInfo.hasOctokit) {
-                throw new Error('GitHub integration not available. Octokit library not loaded.');
+                throw new Error('GitHub integration not available. GitHub API client could not be initialized.');
             }
             
             return await getUncachableGitHubClient();
@@ -84,10 +84,11 @@ class GitHubManager {
             
             if (!envInfo.hasOctokit) return false;
             
-            // Try to actually get a client to verify token availability
+            // Test actual connection to GitHub API
             try {
-                await getUncachableGitHubClient();
-                return true;
+                const client = await getUncachableGitHubClient();
+                const testResult = await client.rest.testConnection();
+                return testResult.success;
             } catch (tokenError) {
                 return false;
             }
@@ -113,12 +114,12 @@ class GitHubManager {
         } catch (error) {
             console.error('Failed to fetch repositories:', error);
             
-            // Provide more specific error messages
-            if (error.message.includes('401')) {
+            // Provide more specific error messages based on status code
+            if (error.status === 401) {
                 throw new Error('GitHub authentication failed. Please check your Personal Access Token.');
-            } else if (error.message.includes('403')) {
+            } else if (error.status === 403) {
                 throw new Error('GitHub access denied. Please ensure your token has "repo" scope permissions.');
-            } else if (error.message.includes('network') || error.message.includes('fetch')) {
+            } else if (error.message.includes('Network error') || error.message.includes('network') || error.message.includes('fetch')) {
                 throw new Error('Network error while connecting to GitHub. Please check your internet connection.');
             } else {
                 throw new Error(`Failed to fetch GitHub repositories: ${error.message}`);
@@ -163,19 +164,59 @@ class GitHubManager {
         };
     }
 
-    // Backup to GitHub repository
-    async backupToGitHub(manual = false) {
-        // Check if GitHub is configured
-        const isConfigured = await this.isGitHubConfigured();
-        if (!isConfigured) {
-            throw new Error('GitHub connection is not set up. Please configure your GitHub token and test the connection first.');
-        }
-        
-        if (!this.settings.enabled || !this.settings.repositoryName) {
-            throw new Error('GitHub backup is not properly configured. Please select a repository in Settings → GitHub Integration.');
-        }
-
+    // Export data as JSON file download (fallback method)
+    exportAsJSON() {
         try {
+            const backupData = this.createBackupData();
+            const fileName = `ai-prompt-manager-backup-${new Date().toISOString().split('T')[0]}.json`;
+            const content = JSON.stringify(backupData, null, 2);
+            
+            // Create download link
+            const blob = new Blob([content], { type: 'application/json' });
+            const url = URL.createObjectURL(blob);
+            const a = document.createElement('a');
+            a.href = url;
+            a.download = fileName;
+            document.body.appendChild(a);
+            a.click();
+            document.body.removeChild(a);
+            URL.revokeObjectURL(url);
+            
+            return {
+                success: true,
+                fileName,
+                message: 'Backup file downloaded successfully',
+                method: 'local_download'
+            };
+        } catch (error) {
+            console.error('JSON export failed:', error);
+            throw new Error(`Failed to export data: ${error.message}`);
+        }
+    }
+
+    // Backup to GitHub repository with fallback
+    async backupToGitHub(manual = false, allowFallback = true) {
+        // Try GitHub backup first
+        try {
+            // Check if GitHub is configured
+            const isConfigured = await this.isGitHubConfigured();
+            if (!isConfigured) {
+                if (allowFallback) {
+                    console.warn('GitHub not configured, falling back to JSON download');
+                    return this.exportAsJSON();
+                }
+                throw new Error('GitHub connection is not set up. Please configure your GitHub token and test the connection first, or use the local backup option.');
+            }
+            
+            if (!this.settings.enabled || !this.settings.repositoryName) {
+                if (allowFallback) {
+                    console.warn('GitHub not properly configured, falling back to JSON download');
+                    return this.exportAsJSON();
+                }
+                throw new Error('GitHub backup is not properly configured. Please select a repository in Settings → GitHub Integration, or use the local backup option.');
+            }
+
+            try {
             const client = await this.getGitHubClient();
             const backupData = this.createBackupData();
             const fileName = `ai-prompt-manager-backup-${new Date().toISOString().split('T')[0]}.json`;
@@ -232,7 +273,23 @@ class GitHubManager {
 
         } catch (error) {
             console.error('GitHub backup failed:', error);
-            throw new Error(`Backup failed: ${error.message}`);
+            
+            // Try fallback if enabled
+            if (allowFallback) {
+                console.warn('GitHub backup failed, attempting fallback to JSON download');
+                try {
+                    const fallbackResult = this.exportAsJSON();
+                    // Add warning message about fallback
+                    return {
+                        ...fallbackResult,
+                        warning: `GitHub backup failed (${error.message}), but your data has been downloaded as a JSON file instead.`
+                    };
+                } catch (fallbackError) {
+                    throw new Error(`Both GitHub backup and local export failed. GitHub error: ${error.message}, Export error: ${fallbackError.message}`);
+                }
+            } else {
+                throw new Error(`Backup failed: ${error.message}`);
+            }
         }
     }
 

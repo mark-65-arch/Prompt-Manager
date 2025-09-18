@@ -1,5 +1,5 @@
 // GitHub Client for Browser Environment
-// Supports both Replit integration and Personal Access Token fallback
+// Uses vanilla fetch() API instead of Octokit for better reliability
 
 let connectionSettings;
 
@@ -12,38 +12,132 @@ function isReplitEnvironment() {
     );
 }
 
-// Get the Octokit class from global scope
-async function getOctokitClass() {
-    // Wait a bit for the CDN to load if needed
-    if (typeof window !== 'undefined' && !window.OctokitLibraryLoaded) {
-        await new Promise(resolve => setTimeout(resolve, 1000));
+// GitHub API base URL
+const GITHUB_API_BASE = 'https://api.github.com';
+
+// Custom GitHub API client using fetch()
+class GitHubAPIClient {
+    constructor(token) {
+        this.token = token;
+        this.headers = {
+            'Authorization': `token ${token}`,
+            'Accept': 'application/vnd.github.v3+json'
+        };
     }
-    
-    if (typeof window !== 'undefined') {
-        // Try different ways Octokit might be exposed
-        if (window.Octokit && typeof window.Octokit === 'function') {
-            return window.Octokit;
+
+    // Generic API request method
+    async request(endpoint, options = {}) {
+        const url = `${GITHUB_API_BASE}${endpoint}`;
+        const headers = { ...this.headers };
+        
+        // Only set Content-Type for requests with a body
+        if (options.body) {
+            headers['Content-Type'] = 'application/json';
         }
-        if (window.Octokit && window.Octokit.Octokit) {
-            return window.Octokit.Octokit;
-        }
-        if (window.OctokitRest && window.OctokitRest.Octokit) {
-            return window.OctokitRest.Octokit;
-        }
-        if (window.OctokitRest) {
-            return window.OctokitRest;
+        
+        const config = {
+            ...options,
+            headers: {
+                ...headers,
+                ...options.headers
+            }
+        };
+
+        try {
+            const response = await fetch(url, config);
+            
+            // Handle non-200 responses
+            if (!response.ok) {
+                const errorBody = await response.text();
+                let errorMessage;
+                
+                try {
+                    const errorJson = JSON.parse(errorBody);
+                    errorMessage = errorJson.message || response.statusText;
+                } catch {
+                    errorMessage = response.statusText;
+                }
+
+                const error = new Error(errorMessage);
+                error.status = response.status;
+                error.response = response;
+                throw error;
+            }
+
+            // Return parsed JSON for successful responses
+            const contentType = response.headers.get('content-type');
+            if (contentType && contentType.includes('application/json')) {
+                return await response.json();
+            }
+            
+            return await response.text();
+        } catch (error) {
+            // Network or parsing errors
+            if (error.status) {
+                throw error; // Re-throw HTTP errors
+            }
+            
+            // Handle network errors
+            throw new Error(`Network error: ${error.message}`);
         }
     }
-    
-    console.error('Available globals:', typeof window !== 'undefined' ? Object.keys(window).filter(k => k.toLowerCase().includes('octokit')) : 'window not available');
-    
-    // For now, provide a helpful error message to users
-    throw new Error('GitHub backup feature requires internet connection and modern browser. Please try refreshing the page or use the manual export/import features in Data Management.');
+
+    // Repositories API
+    repos = {
+        // List user repositories
+        listForAuthenticatedUser: async (params = {}) => {
+            const queryParams = new URLSearchParams({
+                sort: params.sort || 'updated',
+                per_page: params.per_page || 100
+            });
+            
+            const data = await this.request(`/user/repos?${queryParams}`);
+            return { data };
+        },
+
+        // Get repository contents
+        getContent: async (params) => {
+            const { owner, repo, path, ref } = params;
+            const queryParams = ref ? `?ref=${ref}` : '';
+            const data = await this.request(`/repos/${owner}/${repo}/contents/${path}${queryParams}`);
+            return { data };
+        },
+
+        // Create or update file contents
+        createOrUpdateFileContents: async (params) => {
+            const { owner, repo, path, message, content, sha, branch } = params;
+            const endpoint = `/repos/${owner}/${repo}/contents/${path}`;
+            
+            const body = {
+                message,
+                content,
+                ...(sha && { sha }),
+                ...(branch && { branch })
+            };
+
+            const data = await this.request(endpoint, {
+                method: 'PUT',
+                body: JSON.stringify(body)
+            });
+            
+            return { data };
+        }
+    };
+
+    // Test GitHub API connectivity and token validity
+    async testConnection() {
+        try {
+            const data = await this.request('/user');
+            return { success: true, data };
+        } catch (error) {
+            return { success: false, error };
+        }
+    }
 }
 
-// Get access token - prioritize user-provided token since server-side Replit integration requires backend
+// Get access token - prioritize user-provided token
 async function getAccessToken() {
-    // First try user-provided Personal Access Token
+    // Try user-provided Personal Access Token
     try {
         return getUserProvidedToken();
     } catch (userTokenError) {
@@ -76,21 +170,19 @@ function getUserProvidedToken() {
     }
 }
 
-// WARNING: Never cache this client.
-// Access tokens may expire, so create a fresh client each time.
+// Create GitHub API client using fetch()
 export async function getUncachableGitHubClient() {
     try {
-        const OctokitClass = await getOctokitClass();
         const accessToken = await getAccessToken();
         
         if (!accessToken) {
             throw new Error('Access token is required but was not provided');
         }
         
-        return new OctokitClass({ 
-            auth: accessToken,
-            userAgent: 'AI-Prompt-Manager/2.0'
-        });
+        // Return our custom fetch-based client with Octokit-like interface
+        return {
+            rest: new GitHubAPIClient(accessToken)
+        };
     } catch (error) {
         console.error('Failed to create GitHub client:', error);
         throw error;
@@ -100,9 +192,9 @@ export async function getUncachableGitHubClient() {
 // Check if GitHub is available in current environment
 export async function isGitHubAvailable() {
     try {
-        await getOctokitClass(); // Check if Octokit is loaded
-        await getAccessToken(); // Check if we have a token
-        return true;
+        const client = await getUncachableGitHubClient();
+        const testResult = await client.rest.testConnection();
+        return testResult.success;
     } catch (error) {
         console.warn('GitHub availability check failed:', error);
         return false;
@@ -112,15 +204,8 @@ export async function isGitHubAvailable() {
 // Get environment type for UI display
 export async function getEnvironmentInfo() {
     const isReplit = isReplitEnvironment();
-    let hasOctokit = false;
+    let hasOctokit = true; // We now have our own fetch-based implementation
     let requiresToken = true;
-    
-    try {
-        getOctokitClass();
-        hasOctokit = true;
-    } catch (error) {
-        console.warn('Octokit not available:', error);
-    }
     
     // Check if we already have a token configured
     try {
@@ -128,13 +213,6 @@ export async function getEnvironmentInfo() {
         requiresToken = false;
     } catch (error) {
         requiresToken = true;
-    }
-    
-    // Also check if Octokit is available
-    try {
-        await getOctokitClass();
-    } catch (error) {
-        hasOctokit = false;
     }
     
     console.log('Environment info:', { isReplit, hasOctokit, requiresToken });
