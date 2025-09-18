@@ -1,5 +1,31 @@
 // GitHub Integration Module for AI Prompt Manager
 
+// UTF-8 safe Base64 encoding/decoding functions
+function base64EncodeUTF8(str) {
+    // Convert string to UTF-8 bytes, then to Base64
+    const encoder = new TextEncoder();
+    const bytes = encoder.encode(str);
+    
+    // Handle large content safely without spreading to avoid stack overflow
+    let binaryString = '';
+    for (let i = 0; i < bytes.length; i++) {
+        binaryString += String.fromCharCode(bytes[i]);
+    }
+    return btoa(binaryString);
+}
+
+function base64DecodeUTF8(base64Str) {
+    // Clean up Base64 string (remove newlines) and decode to UTF-8
+    const cleanBase64 = base64Str.replace(/\n/g, '');
+    const binaryString = atob(cleanBase64);
+    const bytes = new Uint8Array(binaryString.length);
+    for (let i = 0; i < binaryString.length; i++) {
+        bytes[i] = binaryString.charCodeAt(i);
+    }
+    const decoder = new TextDecoder();
+    return decoder.decode(bytes);
+}
+
 // GitHub Client Management
 class GitHubManager {
     constructor() {
@@ -53,17 +79,18 @@ class GitHubManager {
     // Check if GitHub is available and properly configured
     async isGitHubConfigured() {
         try {
-            const { getEnvironmentInfo } = await import('./octokit-client.js');
+            const { getEnvironmentInfo, getUncachableGitHubClient } = await import('./octokit-client.js');
             const envInfo = await getEnvironmentInfo();
             
             if (!envInfo.hasOctokit) return false;
             
-            if (envInfo.requiresToken) {
-                const settings = JSON.parse(localStorage.getItem('aiPromptManager_githubSettings') || '{}');
-                return !!settings.personalAccessToken;
+            // Try to actually get a client to verify token availability
+            try {
+                await getUncachableGitHubClient();
+                return true;
+            } catch (tokenError) {
+                return false;
             }
-            
-            return true;
         } catch (error) {
             return false;
         }
@@ -103,9 +130,20 @@ class GitHubManager {
     createBackupData() {
         const prompts = window.promptManager ? window.promptManager.getAllPrompts() : [];
         const categories = window.categoryManager ? window.categoryManager.getAllCategories() : {};
+        
+        // Create safe settings object excluding sensitive data
+        const safeGitHubSettings = {
+            enabled: this.settings.enabled,
+            repositoryName: this.settings.repositoryName,
+            branch: this.settings.branch,
+            autoBackup: this.settings.autoBackup,
+            backupFrequency: this.settings.backupFrequency
+            // Intentionally exclude personalAccessToken and other sensitive fields
+        };
+        
         const settings = {
             theme: window.themeManager ? window.themeManager.getCurrentTheme() : 'light',
-            githubSettings: this.settings
+            githubSettings: safeGitHubSettings
         };
 
         return {
@@ -161,7 +199,7 @@ class GitHubManager {
                     repo,
                     path: fileName,
                     message: `Update AI Prompt Manager backup - ${manual ? 'Manual' : 'Automatic'} backup`,
-                    content: btoa(content),
+                    content: base64EncodeUTF8(content),
                     sha: existingFile.data.sha,
                     branch: this.settings.branch
                 });
@@ -173,7 +211,7 @@ class GitHubManager {
                         repo,
                         path: fileName,
                         message: `Create AI Prompt Manager backup - ${manual ? 'Manual' : 'Automatic'} backup`,
-                        content: btoa(content),
+                        content: base64EncodeUTF8(content),
                         branch: this.settings.branch
                     });
                 } else {
@@ -215,7 +253,7 @@ class GitHubManager {
                 ref: this.settings.branch
             });
 
-            const content = JSON.parse(atob(data.content));
+            const content = JSON.parse(base64DecodeUTF8(data.content));
             
             // Validate backup data
             if (!content.data || !content.data.prompts || !content.data.categories) {

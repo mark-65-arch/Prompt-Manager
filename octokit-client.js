@@ -1,148 +1,48 @@
-// Octokit Client with Environment Detection
+// GitHub Client for Browser Environment
+// Supports both Replit integration and Personal Access Token fallback
+
+let connectionSettings;
 
 // Detect if we're in a Replit environment
 function isReplitEnvironment() {
     return typeof window !== 'undefined' && (
         window.location.hostname.includes('replit.') ||
         window.location.hostname.includes('repl.co') ||
-        (typeof process !== 'undefined' && process.env?.REPLIT_CONNECTORS_HOSTNAME)
+        window.location.hostname.includes('replit.dev')
     );
 }
 
-// Global Octokit reference for different environments
-async function getOctokitClass() {
-    // Try CDN version first (Skypack)
-    if (typeof window !== 'undefined') {
-        try {
-            // Try global Octokit first (UMD builds from the script tag in HTML)
-            if (window.Octokit && window.Octokit.Octokit) {
-                return window.Octokit.Octokit;
-            }
-            if (window.Octokit) {
-                return window.Octokit;
-            }
-            
-            // Try dynamic import for ES modules (Skypack)
-            console.log('Attempting to load Octokit from CDN...');
-            const { Octokit } = await import('https://cdn.skypack.dev/@octokit/rest@20.0.0');
-            return Octokit;
-        } catch (e) {
-            console.warn('CDN Octokit not available:', e);
-            
-            // Last resort: try to use the global from the HTML script tag
-            if (typeof window !== 'undefined' && window.Octokit) {
-                const OctokitConstructor = window.Octokit.Octokit || window.Octokit;
-                if (OctokitConstructor) {
-                    console.log('Using global Octokit as fallback');
-                    return OctokitConstructor;
-                }
-            }
-        }
+// Get the Octokit class from global scope (UMD build)
+function getOctokitClass() {
+    if (typeof window !== 'undefined' && window.Octokit) {
+        return window.Octokit.Octokit || window.Octokit;
     }
-    
-    // Try Node.js require
-    if (typeof require !== 'undefined') {
-        try {
-            return require('@octokit/rest').Octokit;
-        } catch (e) {
-            console.warn('Octokit not available via require');
-        }
-    }
-    
-    throw new Error('Octokit not available');
+    throw new Error('Octokit not available from CDN');
 }
 
-let connectionSettings;
-
-// Get access token based on environment
+// Get access token - prioritize user-provided token since server-side Replit integration requires backend
 async function getAccessToken() {
+    // First try user-provided Personal Access Token
     try {
+        return getUserProvidedToken();
+    } catch (userTokenError) {
+        // If in Replit environment, inform user about the limitation
         if (isReplitEnvironment()) {
-            // In Replit, try the connector first, but fallback to user token if it fails
-            try {
-                return await getReplitAccessToken();
-            } catch (replitError) {
-                console.warn('Replit connector failed, falling back to user token:', replitError);
-                return getUserProvidedToken();
-            }
+            throw new Error('GitHub backup requires a Personal Access Token. Please add one in Settings → GitHub Integration, or use the built-in Replit Git features.');
         } else {
-            return getUserProvidedToken();
+            throw userTokenError;
         }
-    } catch (error) {
-        console.error('Token retrieval failed:', error);
-        throw new Error(`Authentication failed: ${error.message}`);
     }
 }
 
-// Replit-specific token retrieval
-async function getReplitAccessToken() {
-    if (connectionSettings && connectionSettings.settings.expires_at && 
-        new Date(connectionSettings.settings.expires_at).getTime() > Date.now()) {
-        return connectionSettings.settings.access_token;
-    }
-    
-    // Check if we're in browser or server context
-    let hostname, xReplitToken;
-    
-    if (typeof process !== 'undefined' && process.env) {
-        // Server context
-        hostname = process.env.REPLIT_CONNECTORS_HOSTNAME;
-        xReplitToken = process.env.REPL_IDENTITY 
-            ? 'repl ' + process.env.REPL_IDENTITY 
-            : process.env.WEB_REPL_RENEWAL 
-            ? 'depl ' + process.env.WEB_REPL_RENEWAL 
-            : null;
-    } else if (typeof window !== 'undefined') {
-        // Browser context - get from meta tags or global variables if set
-        const metaHostname = document.querySelector('meta[name="replit-connectors-hostname"]');
-        const metaToken = document.querySelector('meta[name="replit-token"]');
-        
-        hostname = metaHostname?.content || window.REPLIT_CONNECTORS_HOSTNAME;
-        xReplitToken = metaToken?.content || window.REPLIT_TOKEN;
-    }
-
-    if (!xReplitToken || !hostname) {
-        throw new Error('Replit environment detected but authentication tokens not available');
-    }
-
-    try {
-        connectionSettings = await fetch(
-            `https://${hostname}/api/v2/connection?include_secrets=true&connector_names=github`,
-            {
-                headers: {
-                    'Accept': 'application/json',
-                    'X_REPLIT_TOKEN': xReplitToken
-                }
-            }
-        ).then(res => {
-            if (!res.ok) {
-                throw new Error(`Failed to fetch connection: ${res.status}`);
-            }
-            return res.json();
-        }).then(data => data.items?.[0]);
-
-        const accessToken = connectionSettings?.settings?.access_token || 
-                          connectionSettings?.settings?.oauth?.credentials?.access_token;
-
-        if (!connectionSettings || !accessToken) {
-            throw new Error('GitHub connection not found or invalid');
-        }
-        
-        return accessToken;
-    } catch (error) {
-        throw new Error(`Failed to get Replit GitHub token: ${error.message}`);
-    }
-}
-
-// User-provided token (for GitHub Pages or other environments)
+// User-provided token (works in all environments)
 function getUserProvidedToken() {
     try {
-        // Try to get from settings
         const settings = JSON.parse(localStorage.getItem('aiPromptManager_githubSettings') || '{}');
         const token = settings.personalAccessToken || sessionStorage.getItem('github_pat');
         
         if (!token || token.trim() === '') {
-            throw new Error('GitHub Personal Access Token required. Please add one in Settings.');
+            throw new Error('GitHub Personal Access Token required. Please add one in Settings → GitHub Integration.');
         }
         
         return token.trim();
@@ -155,10 +55,11 @@ function getUserProvidedToken() {
     }
 }
 
-// Main function to get GitHub client
+// WARNING: Never cache this client.
+// Access tokens may expire, so create a fresh client each time.
 export async function getUncachableGitHubClient() {
     try {
-        const OctokitClass = await getOctokitClass();
+        const OctokitClass = getOctokitClass();
         const accessToken = await getAccessToken();
         
         if (!accessToken) {
@@ -171,38 +72,48 @@ export async function getUncachableGitHubClient() {
         });
     } catch (error) {
         console.error('Failed to create GitHub client:', error);
-        
-        // Ensure we always throw a proper Error object
-        if (error instanceof Error) {
-            throw error;
-        } else {
-            throw new Error(`GitHub client creation failed: ${JSON.stringify(error)}`);
-        }
+        throw error;
     }
 }
 
 // Check if GitHub is available in current environment
 export async function isGitHubAvailable() {
     try {
-        const OctokitClass = await getOctokitClass();
-        console.log('Octokit availability check passed:', !!OctokitClass);
+        getOctokitClass(); // Check if Octokit is loaded
+        await getAccessToken(); // Check if we have a token
         return true;
     } catch (error) {
-        console.warn('Octokit availability check failed:', error);
+        console.warn('GitHub availability check failed:', error);
         return false;
     }
 }
 
 // Get environment type for UI display
 export async function getEnvironmentInfo() {
-    const hasOctokit = await isGitHubAvailable();
     const isReplit = isReplitEnvironment();
+    let hasOctokit = false;
+    let requiresToken = true;
     
-    console.log('Environment info:', { isReplit, hasOctokit, requiresToken: !isReplit });
+    try {
+        getOctokitClass();
+        hasOctokit = true;
+    } catch (error) {
+        console.warn('Octokit not available:', error);
+    }
+    
+    // Check if we already have a token configured
+    try {
+        getUserProvidedToken();
+        requiresToken = false;
+    } catch (error) {
+        requiresToken = true;
+    }
+    
+    console.log('Environment info:', { isReplit, hasOctokit, requiresToken });
     
     return {
         isReplit,
         hasOctokit,
-        requiresToken: !isReplit
+        requiresToken
     };
 }
