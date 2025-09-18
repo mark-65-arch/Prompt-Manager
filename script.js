@@ -1,5 +1,65 @@
 // AI Prompt Manager - Main JavaScript
 
+// Theme Management System
+class ThemeManager {
+    constructor() {
+        this.currentTheme = this.loadTheme();
+        this.init();
+    }
+
+    init() {
+        this.applyTheme(this.currentTheme);
+        this.setupThemeToggleButton();
+    }
+
+    loadTheme() {
+        const savedTheme = localStorage.getItem('aiPromptManager_theme');
+        return savedTheme || 'light';
+    }
+
+    saveTheme(theme) {
+        localStorage.setItem('aiPromptManager_theme', theme);
+    }
+
+    applyTheme(theme) {
+        document.documentElement.setAttribute('data-theme', theme);
+        this.updateThemeButton(theme);
+        this.currentTheme = theme;
+    }
+
+    toggleTheme() {
+        const newTheme = this.currentTheme === 'light' ? 'dark' : 'light';
+        this.applyTheme(newTheme);
+        this.saveTheme(newTheme);
+    }
+
+    getCurrentTheme() {
+        return this.currentTheme;
+    }
+
+    updateThemeButton(theme) {
+        const themeButton = document.getElementById('themeToggleBtn');
+        const themeIcon = themeButton?.querySelector('.theme-icon');
+        
+        if (themeIcon) {
+            themeIcon.textContent = theme === 'light' ? '🌙' : '☀️';
+        }
+        
+        if (themeButton) {
+            themeButton.title = `Switch to ${theme === 'light' ? 'dark' : 'light'} theme`;
+        }
+    }
+
+    setupThemeToggleButton() {
+        const themeButton = document.getElementById('themeToggleBtn');
+        if (themeButton) {
+            themeButton.addEventListener('click', () => {
+                this.toggleTheme();
+            });
+        }
+    }
+}
+
 // Category Management Data Structure
 class CategoryManager {
     constructor() {
@@ -649,6 +709,7 @@ class PromptManager {
 }
 
 // Global manager instances
+let themeManager;
 let categoryManager;
 let promptManager;
 let bulkOperationsManager;
@@ -657,7 +718,11 @@ let currentVersionHistoryPromptId = null;
 let selectedVersions = [];
 
 document.addEventListener('DOMContentLoaded', function() {
-    // Initialize managers
+    // Initialize theme manager first (affects UI appearance)
+    themeManager = new ThemeManager();
+    window.themeManager = themeManager; // Make globally accessible
+    
+    // Initialize other managers
     categoryManager = new CategoryManager();
     promptManager = new PromptManager();
     
@@ -4725,8 +4790,11 @@ class KeyboardShortcutsManager {
     }
 
     toggleTheme() {
-        // This will be implemented when theme toggle is added
-        this.showShortcutFeedback('Theme toggle coming soon...');
+        if (window.themeManager) {
+            window.themeManager.toggleTheme();
+            const currentTheme = window.themeManager.getCurrentTheme();
+            this.showShortcutFeedback(`Switched to ${currentTheme} theme`);
+        }
     }
 
     showShortcutFeedback(message) {
