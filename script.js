@@ -6008,9 +6008,20 @@ class SettingsManager {
             const tokenGroup = document.getElementById('githubTokenGroup');
             const tokenInput = document.getElementById('githubToken');
             
-            // Show/hide token input based on environment
+            // Show/hide token input based on environment and connection status
             if (tokenGroup) {
-                tokenGroup.style.display = envInfo.requiresToken ? 'block' : 'none';
+                // Always show token input initially so users can see what's needed
+                tokenGroup.style.display = 'block';
+                
+                // Add environment-specific help text
+                const helpText = tokenGroup.querySelector('.form-help');
+                if (helpText) {
+                    if (envInfo.isReplit) {
+                        helpText.innerHTML = 'In Replit: Connect your GitHub account via the Replit GitHub connector first, or use a <a href="https://github.com/settings/tokens" target="_blank">Personal Access Token</a> with "repo" scope.';
+                    } else {
+                        helpText.innerHTML = 'Required for GitHub integration. <a href="https://github.com/settings/tokens" target="_blank">Create token</a> with "repo" scope.';
+                    }
+                }
             }
             
             // Set current token value if available
@@ -6066,13 +6077,22 @@ class SettingsManager {
                     console.warn('Failed to load repositories:', repoError);
                     if (statusIndicator) {
                         statusIndicator.className = 'github-status-indicator disconnected';
-                        statusIndicator.innerHTML = '<span class="github-status-dot"></span>Auth Failed';
+                        if (envInfo.isReplit) {
+                            statusIndicator.innerHTML = '<span class="github-status-dot"></span>Not Connected - Set up GitHub connector or add token';
+                        } else {
+                            statusIndicator.innerHTML = '<span class="github-status-dot"></span>Auth Failed - Check token';
+                        }
                     }
                 }
             } else {
                 // Not configured
                 if (statusIndicator) {
-                    const message = envInfo.requiresToken ? 'Token Required' : 'Not Connected';
+                    let message;
+                    if (envInfo.isReplit) {
+                        message = 'Set up GitHub connector or add token below';
+                    } else {
+                        message = 'Add your GitHub token below';
+                    }
                     statusIndicator.className = 'github-status-indicator disconnected';
                     statusIndicator.innerHTML = `<span class="github-status-dot"></span>${message}`;
                 }
@@ -6080,8 +6100,14 @@ class SettingsManager {
                 if (backupInfo) {
                     backupInfo.innerHTML = `
                         <span><strong>Last Backup:</strong> Never</span>
-                        <span>Status: Not configured</span>
+                        <span>Status: Not configured - ${envInfo.isReplit ? 'Connect GitHub account' : 'Add token'}</span>
                     `;
+                }
+                
+                // Clear repository dropdown
+                const repositorySelect = document.getElementById('githubRepository');
+                if (repositorySelect) {
+                    repositorySelect.innerHTML = '<option value="">First connect to GitHub...</option>';
                 }
             }
 
@@ -6134,21 +6160,91 @@ class SettingsManager {
             window.githubManager.saveSettings();
             window.githubManager.showSuccessMessage('GitHub settings saved successfully!');
             
-            // Reload settings to update UI
-            setTimeout(() => {
-                this.loadGitHubSettings();
-            }, 1000);
+            // Automatically test connection and reload settings
+            setTimeout(async () => {
+                await this.testGitHubConnection();
+                // Give a moment for the test to complete, then refresh the UI
+                setTimeout(() => {
+                    this.loadGitHubSettings();
+                }, 1000);
+            }, 500);
         }
     }
 
     async testGitHubConnection() {
         if (!window.githubManager) return;
 
+        const testBtn = document.getElementById('testConnectionBtn');
+        const statusIndicator = document.getElementById('githubStatusIndicator');
+        const repositorySelect = document.getElementById('githubRepository');
+        
+        // Disable button and show loading state
+        if (testBtn) {
+            testBtn.disabled = true;
+            testBtn.innerHTML = '🔄 Testing...';
+        }
+
         try {
-            const repositories = await window.githubManager.getUserRepositories();
-            window.githubManager.showSuccessMessage(`✅ Connected successfully! Found ${repositories.length} repositories.`);
+            // Test the connection by calling GitHub API directly
+            const { getUncachableGitHubClient } = await import('./octokit-client.js');
+            const octokit = await getUncachableGitHubClient();
+            
+            // Verify connection with user info
+            const { data: user } = await octokit.request('GET /user');
+            console.log('GitHub connection successful:', user.login);
+            
+            // Load repositories
+            const { data: repos } = await octokit.request('GET /user/repos', {
+                per_page: 100,
+                visibility: 'all',
+                sort: 'updated'
+            });
+            
+            // Populate repository dropdown
+            if (repositorySelect) {
+                repositorySelect.innerHTML = '<option value="">Select repository...</option>';
+                repos.forEach(repo => {
+                    const option = document.createElement('option');
+                    option.value = repo.full_name;
+                    option.textContent = `${repo.name} ${repo.private ? '(Private)' : '(Public)'}`;
+                    repositorySelect.appendChild(option);
+                });
+                
+                // Set selected repository if saved
+                if (window.githubManager.settings.repositoryName) {
+                    repositorySelect.value = window.githubManager.settings.repositoryName;
+                }
+            }
+            
+            // Update status indicator
+            if (statusIndicator) {
+                statusIndicator.className = 'github-status-indicator connected';
+                statusIndicator.innerHTML = '<span class="github-status-dot"></span>Connected';
+            }
+            
+            window.githubManager.showSuccessMessage(`✅ Connected successfully! Found ${repos.length} repositories as ${user.login}.`);
+            
         } catch (error) {
+            console.error('GitHub connection test failed:', error);
+            
+            // Update status indicator
+            if (statusIndicator) {
+                statusIndicator.className = 'github-status-indicator disconnected';
+                statusIndicator.innerHTML = '<span class="github-status-dot"></span>Connection Failed';
+            }
+            
+            // Clear repository dropdown
+            if (repositorySelect) {
+                repositorySelect.innerHTML = '<option value="">Connection failed - check token</option>';
+            }
+            
             window.githubManager.showErrorMessage(`❌ Connection failed: ${error.message}`);
+        } finally {
+            // Re-enable button
+            if (testBtn) {
+                testBtn.disabled = false;
+                testBtn.innerHTML = '🔗 Test Connection';
+            }
         }
     }
 
